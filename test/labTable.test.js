@@ -73,7 +73,7 @@ test("the 5 fixtures are valid station names, matched by their display name", ()
 });
 
 test("the 3 new destination fixtures are valid station names too", () => {
-  const raw = "Beakers\tGlassware\nTip Boxes\tPipette Tips / Reservoirs\nFrozen Reagents\t4C Freezer";
+  const raw = "Beakers\tGlassware\nTip Boxes\tConsumables 1\nFrozen Reagents\t4C Refrigerator";
   const t = parseLabTable(raw);
   assert.equal(t.errors.length, 0);
   assert.deepEqual(t.equipToStations["Beakers"], ["GLASSWARE"]);
@@ -87,9 +87,9 @@ test("the 5 fixtures are always present as their own baseline equipment, even on
   assert.deepEqual(t.equipToStations["Recycle"], ["RECYCLE"]);
   assert.deepEqual(t.equipToStations["Biohazardous Waste"], ["WASTE"]);
   assert.deepEqual(t.equipToStations["Sink"], ["SINK"]);
-  assert.deepEqual(t.equipToStations["Wellplates / Tubes"], ["CONSUM"]);
+  assert.deepEqual(t.equipToStations["Consumables 2"], ["CONSUM"]);
   for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "CONSUM"]) assert.equal(t.stationEquip[id].length, 1);
-  // Glassware, pipette tips/reservoirs, and the freezer are plain destinations,
+  // Glassware, Consumables 1, and the refrigerator are plain destinations,
   // like a bench — nothing is auto-installed there.
   for (const id of ["PIPETTE", "GLASSWARE", "FREEZER"]) assert.equal(t.stationEquip[id], undefined);
 });

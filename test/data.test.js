@@ -103,9 +103,9 @@ test("the trio and the far pair are on opposite sides of the same walkway", () =
   assert.equal(routeDistanceFt("SHARPS", "SINK"), routeDistanceFt("B3", "SINK"));
 });
 
-test("the far row orders sink, pipette tips, glassware, wellplates/tubes left to right", () => {
-  assert.ok(routeDistanceFt("SINK", "PIPETTE") < routeDistanceFt("SINK", "GLASSWARE"));
-  assert.ok(routeDistanceFt("SINK", "GLASSWARE") < routeDistanceFt("SINK", "CONSUM"));
+test("the far row orders sink, glassware, Consumables 1, Consumables 2 left to right", () => {
+  assert.ok(routeDistanceFt("SINK", "GLASSWARE") < routeDistanceFt("SINK", "PIPETTE"));
+  assert.ok(routeDistanceFt("SINK", "PIPETTE") < routeDistanceFt("SINK", "CONSUM"));
 });
 
 test("the freezer is a far fixture, reachable like any other far fixture", () => {

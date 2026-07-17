@@ -65,13 +65,14 @@ walkway into two groups. The **trio** (sharps bin, recycling bin, biohazard box)
 sits touching the bottom of row 3 — the sharps bin at the end of column B, the
 biohazard box at the end of column C, recycling between them — with *no* gap, like
 a 4th row with nothing beyond it. The **far row** sits on the opposite side of the
-back walkway, directly across from the trio: sink, pipette tips/reservoirs,
-glassware, and wellplates/tubes storage, chained left to right and centered on the
-same B-C boundary as the trio (pipette tips/reservoirs sits between the sink and
-glassware; glassware sits directly left of wellplates/tubes). The **4C freezer**
-is also beyond the back walkway but off on its own, 5ft to the right of H3, past
-the last column — same distance-model semantics as the far row, just positioned
-far to the right instead of centered near B-C. Real footprints (feet) are kept as
+back walkway: sink, glassware, Consumables 1, and Consumables 2, chained left to
+right and shifted right so the sink's left edge lines up with B3's left edge
+(glassware sits directly right of the sink; Consumables 1 sits directly right of
+glassware; Consumables 2 sits directly right of Consumables 1) — offset from the
+trio rather than centered on the same boundary. The **4C refrigerator** is also
+beyond the back walkway but off on its own, 5ft to the right of H3, past the last
+column — same distance-model semantics as the far row, just positioned far to the
+right instead of over by B-C. Real footprints (feet) are kept as
 *length* (the top-to-bottom extent, facing the wall) × *width* (the left-to-right
 extent) and scaled up for map legibility — a 1-2ft bin would otherwise round to an
 unreadable box.
@@ -83,12 +84,12 @@ bench. Distance-wise, the trio is *aliased* to its anchor column's row-3 bench �
 `routeDistanceFt("B1", "B3")` — recycling straddles both B and C, so it resolves to
 whichever is closer (`NEAR_FIXTURES` lists each trio member's anchor column(s); the
 alias resolution is the first branch of `routeDistanceFt`). Everything else
-(the far row, plus the freezer) works like the far pair in earlier iterations of
-this map: reaching one from a bench always costs one back-walkway crossing, and two
-far fixtures are pure lateral distance apart (`FAR_FEETX` — purely a distance-model
-coordinate, not derived from the pixel layout, though it's kept in the same
-left-to-right order: sink, pipette tips/reservoirs, glassware, wellplates/tubes,
-then the freezer far off past column H). A trio member reaching a far fixture (or
+(the far row, plus the refrigerator) works like the far pair in earlier iterations
+of this map: reaching one from a bench always costs one back-walkway crossing, and
+two far fixtures are pure lateral distance apart (`FAR_FEETX` — purely a
+distance-model coordinate, not derived from the pixel layout, though it's kept in
+the same left-to-right order: sink, glassware, Consumables 1, Consumables 2, then
+the refrigerator far off past column H). A trio member reaching a far fixture (or
 vice versa) still crosses the back walkway once, same as any bench would.
 
 Because a fixture is only a couple of feet across, it can't hold an ID or name
@@ -108,27 +109,27 @@ a pasted table — `NAME_TO_STATION_ID` is the case-insensitive reverse lookup
 SHARPS-style ids stay purely internal, driving the geometry/distance model and
 map layout; nothing user-facing needs to know them.
 
-5 of the 8 fixtures (sharps, recycling, biohazard waste, sink, wellplates/tubes)
+5 of the 8 fixtures (sharps, recycling, biohazard waste, sink, Consumables 2)
 are also a piece of equipment in their own right, permanently "installed" at
 their own station — `FIXTURE_EQUIPMENT` (`data.js`) names one ("Sharps",
-"Recycle", "Biohazardous Waste", "Sink", "Wellplates / Tubes") per fixture.
+"Recycle", "Biohazardous Waste", "Sink", "Consumables 2") per fixture.
 `parseLabTable` (`labTable.js`) injects these into every parsed table's
 `equipToStations`/`stationEquip` unconditionally, even on an empty paste, since
 they're baseline lab equipment that's always physically present regardless of
-what a user's table says. Retrieving from wellplates/tubes storage or disposing
-of waste is therefore an ordinary equipment step like any other, not a
-special-cased destination — see the retrieve/dispose bookend below, which
-relies on this to always have equipment to work with. Pipette tips/reservoirs,
-glassware, and the 4C freezer aren't in `FIXTURE_EQUIPMENT` — they're plain
-destinations on the map, like a bench, with nothing auto-installed there; a
-pasted table can still map real equipment to them by name.
+what a user's table says. Retrieving from Consumables 2 or disposing of waste
+is therefore an ordinary equipment step like any other, not a special-cased
+destination — see the retrieve/dispose bookend below, which relies on this to
+always have equipment to work with. Glassware, Consumables 1, and the 4C
+refrigerator aren't in `FIXTURE_EQUIPMENT` — they're plain destinations on the
+map, like a bench, with nothing auto-installed there; a pasted table can still
+map real equipment to them by name.
 
 The 4 vertical walkways and the back walkway render as **one continuous shaded
 region** (`WALKWAY_PATH`, a single comb-shaped SVG path) rather than 5 separate
 boxes — the vertical lanes are extended down to meet the back walkway with no gap,
 so there's no seam where they join. The back walkway itself (`BACK_AISLE`) is wide
-enough to reach past the freezer, so the freezer reads as sitting on an extension
-of the same walkway rather than floating past an unmarked gap.
+enough to reach past the refrigerator, so it reads as sitting on an extension of
+the same walkway rather than floating past an unmarked gap.
 
 **Table parsing (`src/labTable.js`)** — `parseLabTable(raw)` takes a pasted
 spreadsheet table (tab-separated; falls back to comma-separated, though the comma

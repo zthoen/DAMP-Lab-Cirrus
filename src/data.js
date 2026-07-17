@@ -39,13 +39,12 @@ const walkwayCenterX = (g) => {
 
 /* Fixed utility fixtures — baselines that never move. The sharps bin, recycling
    bin, and biohazard box sit touching the bottom of row 3 (the end of columns B
-   and C), exactly like a 4th row with nothing beyond it. The sink, pipette tips/
-   reservoirs, glassware, and wellplates/tubes storage sit in a row on the *far*
-   side of the back walkway, directly across from that trio (left to right:
-   sink, pipette tips/reservoirs, glassware, wellplates/tubes — pipette tips is
-   between the sink and glassware, glassware is directly left of wellplates/
-   tubes). The 4C freezer sits on that same far side, off on its own past the
-   last column. Real dimensions (feet) are kept as "length" (the top-to-bottom
+   and C), exactly like a 4th row with nothing beyond it. The sink, glassware,
+   and the two consumables stations sit in a row on the *far* side of the back
+   walkway (left to right: sink, glassware, Consumables 1, Consumables 2),
+   shifted right so the sink's left edge lines up with B3's left edge. The 4C
+   refrigerator sits on that same far side, off on its own past the last
+   column. Real dimensions (feet) are kept as "length" (the top-to-bottom
    extent, facing the wall) x "width" (the left-to-right extent), scaled up for
    map legibility since a couple of feet would otherwise round to an unreadable
    box. */
@@ -75,20 +74,21 @@ export const BACK_AISLE_H = 34;
 const BACK_AISLE_TOP = BACK_AISLE_Y - BACK_AISLE_H / 2;
 const BACK_AISLE_BOTTOM = BACK_AISLE_Y + BACK_AISLE_H / 2;
 
-// The sink/pipette-tips/glassware/wellplates row sits below the back walkway
-// (the far side from the trio), centered on the same B-C boundary — directly
-// across the walkway from the sharps/recycling/biohazard group.
+// The sink/glassware/Consumables-1/Consumables-2 row sits below the back
+// walkway (the far side from the trio), shifted right so the sink's left edge
+// lines up with B3's left edge — directly across the walkway from the
+// sharps/recycling/biohazard group, but offset from it rather than centered
+// on the same boundary.
 const FAR_TOP_Y = BACK_AISLE_BOTTOM + 22; // headroom for the ID label above the box
-const farRowWidth = sinkBox.w + FIXTURE_GAP + pipetteBox.w + FIXTURE_GAP + glasswareBox.w + FIXTURE_GAP + consumBox.w;
-const sinkX = midBC - farRowWidth / 2;
-const pipetteX = sinkX + sinkBox.w + FIXTURE_GAP;
-const glasswareX = pipetteX + pipetteBox.w + FIXTURE_GAP;
-const consumX = glasswareX + glasswareBox.w + FIXTURE_GAP;
+const sinkX = COL_X.B;
+const glasswareX = sinkX + sinkBox.w + FIXTURE_GAP;
+const pipetteX = glasswareX + glasswareBox.w + FIXTURE_GAP;
+const consumX = pipetteX + pipetteBox.w + FIXTURE_GAP;
 
-// The freezer sits on the same far side, off past the last column — 5ft to the
-// right of H3, across the walkway from it (same FAR_TOP_Y as the rest of the
-// far row, since it's the same "beyond the back walkway" distance, just far to
-// the right instead of centered near B-C).
+// The refrigerator sits on the same far side, off past the last column — 5ft
+// to the right of H3, across the walkway from it (same FAR_TOP_Y as the rest
+// of the far row, since it's the same "beyond the back walkway" distance,
+// just far to the right instead of over by B-C).
 const freezerX = COL_X.H + SLOT_W + 5 * FIXTURE_PX_PER_FT;
 
 export const FIXTURES = {
@@ -96,26 +96,26 @@ export const FIXTURES = {
   RECYCLE: { name: "Recycling Bin", x: recycleX, y: TRIO_TOP_Y, w: recycleBox.w, h: recycleBox.h },
   WASTE: { name: "Biohazard Waste", x: wasteX, y: TRIO_TOP_Y, w: wasteBox.w, h: wasteBox.h },
   SINK: { name: "Sink", x: sinkX, y: FAR_TOP_Y, w: sinkBox.w, h: sinkBox.h },
-  PIPETTE: { name: "Pipette Tips / Reservoirs", x: pipetteX, y: FAR_TOP_Y, w: pipetteBox.w, h: pipetteBox.h },
   GLASSWARE: { name: "Glassware", x: glasswareX, y: FAR_TOP_Y, w: glasswareBox.w, h: glasswareBox.h },
-  CONSUM: { name: "Wellplates / Tubes", x: consumX, y: FAR_TOP_Y, w: consumBox.w, h: consumBox.h },
-  FREEZER: { name: "4C Freezer", x: freezerX, y: FAR_TOP_Y, w: freezerBox.w, h: freezerBox.h },
+  PIPETTE: { name: "Consumables 1", x: pipetteX, y: FAR_TOP_Y, w: pipetteBox.w, h: pipetteBox.h },
+  CONSUM: { name: "Consumables 2", x: consumX, y: FAR_TOP_Y, w: consumBox.w, h: consumBox.h },
+  FREEZER: { name: "4C Refrigerator", x: freezerX, y: FAR_TOP_Y, w: freezerBox.w, h: freezerBox.h },
 };
 
 // Each of these 5 fixtures is also a piece of equipment in its own right,
-// permanently "installed" at its own location — retrieving from wellplates/
-// tubes storage or disposing of waste is itself a protocol step, not just a
-// destination. labTable.js adds these to every parsed table's
-// equipToStations/stationEquip unconditionally, regardless of what the pasted
-// data says, since they're baseline lab fixtures that are always physically
-// present. Glassware, pipette tips/reservoirs, and the 4C freezer are just
-// destinations on the map, like a bench — nothing is auto-installed there.
+// permanently "installed" at its own location — retrieving from Consumables 2
+// or disposing of waste is itself a protocol step, not just a destination.
+// labTable.js adds these to every parsed table's equipToStations/stationEquip
+// unconditionally, regardless of what the pasted data says, since they're
+// baseline lab fixtures that are always physically present. Glassware,
+// Consumables 1, and the 4C refrigerator are just destinations on the map,
+// like a bench — nothing is auto-installed there.
 export const FIXTURE_EQUIPMENT = {
   SHARPS: "Sharps",
   RECYCLE: "Recycle",
   WASTE: "Biohazardous Waste",
   SINK: "Sink",
-  CONSUM: "Wellplates / Tubes",
+  CONSUM: "Consumables 2",
 };
 
 // The trio (touching row 3, reached via whichever of B's or C's own walkway is
@@ -123,13 +123,13 @@ export const FIXTURE_EQUIPMENT = {
 // the back walkway (genuinely across it, like the fixtures in the previous
 // layout). FAR_FEETX values are lateral feet along the far side, purely for the
 // distance model — they tell the same qualitative story as the pixel layout
-// above (sink, pipette tips, glassware, wellplates/tubes in that order, with
-// the freezer far off past column H) without needing to be derived from it.
+// above (sink, glassware, Consumables 1, Consumables 2 in that order, with the
+// refrigerator far off past column H) without needing to be derived from it.
 const NEAR_FIXTURES = { SHARPS: ["B"], WASTE: ["C"], RECYCLE: ["B", "C"] };
 const FAR_FEETX = {
   SINK: 0,
-  PIPETTE: 4,
-  GLASSWARE: 8,
+  GLASSWARE: 4,
+  PIPETTE: 8,
   CONSUM: 12,
   FREEZER: COL_ORDER.indexOf("H") * BENCH_WIDTH_FT + 5,
 };
@@ -143,8 +143,8 @@ export { isNearFixture };
 // Vertical walkway rectangles extended down to meet the back walkway with no
 // gap, plus the back walkway itself — together they render as one continuous
 // shaded region (a comb shape) rather than 5 separate boxes. The back walkway
-// runs wide enough to reach past the freezer, so it reads as one continuous
-// walkway rather than an unmarked gap between the far row and the freezer.
+// runs wide enough to reach past the refrigerator, so it reads as one continuous
+// walkway rather than an unmarked gap between the far row and the refrigerator.
 export const WALKWAYS = WALKWAY_GROUPS.map(([l, r]) => ({
   x: COL_X[l] + SLOT_W,
   width: COL_X[r] - (COL_X[l] + SLOT_W),
