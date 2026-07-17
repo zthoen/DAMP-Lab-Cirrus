@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { routeDistanceFt, routeWaypoints, BENCH_DIST_FT, STATION_IDS, center, WALKWAY_WIDTH_FT, BACK_AISLE_FT, BENCH_LEN_FT, BENCH_WIDTH_FT } from "../src/data.js";
+import { routeDistanceFt, routeWaypoints, BENCH_DIST_FT, STATION_IDS, STATION_NAME, NAME_TO_STATION_ID, center, WALKWAY_WIDTH_FT, BACK_AISLE_FT, BENCH_LEN_FT, BENCH_WIDTH_FT } from "../src/data.js";
 
 test("same station is zero distance", () => {
   assert.equal(routeDistanceFt("A1", "A1"), 0);
@@ -46,6 +46,22 @@ test("BENCH_DIST_FT lookup matches routeDistanceFt for every pair", () => {
 test("the 5 baseline fixtures are valid stations alongside the 24 benches", () => {
   assert.equal(STATION_IDS.length, 29);
   for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "CONSUM"]) assert.ok(STATION_IDS.includes(id));
+});
+
+test("every station has a fixed name, and every name resolves back to its station", () => {
+  assert.equal(Object.keys(STATION_NAME).length, STATION_IDS.length);
+  for (const id of STATION_IDS) {
+    assert.ok(STATION_NAME[id], `${id} has no name`);
+    assert.equal(NAME_TO_STATION_ID[STATION_NAME[id].toLowerCase()], id);
+  }
+});
+
+test("station names match the hardcoded row/column layout", () => {
+  assert.equal(STATION_NAME.A1, "Opentrons");
+  assert.equal(STATION_NAME.H1, "Small Equipment");
+  assert.equal(STATION_NAME.A3, "Hamilton");
+  assert.equal(STATION_NAME.D3, "PCR");
+  assert.equal(STATION_NAME.H3, "Prototyping");
 });
 
 test("the sharps/recycling/biohazard trio is aliased to its anchor column's row-3 bench", () => {

@@ -1,10 +1,8 @@
 import React from "react";
 import { VIEW_W, VIEW_H, C, MONO, wrapLabel } from "../constants.js";
-import { SLOTS, FIXTURES, STATION_IDS, center, routeWaypoints, WALKWAY_PATH, isNearFixture, BENCH_LEN_FT, WALKWAY_WIDTH_FT, BACK_AISLE_FT } from "../data.js";
+import { SLOTS, FIXTURES, STATION_IDS, STATION_NAME, center, routeWaypoints, WALKWAY_PATH, isNearFixture, BENCH_LEN_FT, WALKWAY_WIDTH_FT, BACK_AISLE_FT } from "../data.js";
 
-const displayNames = (id, stationNames) => (FIXTURES[id] ? [FIXTURES[id].name] : stationNames[id] || []);
-
-export default function LabMap({ stationEquip, stationNames, hoverSlot, setHoverSlot, highlightPath }) {
+export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highlightPath }) {
   const hov = hoverSlot ? stationEquip[hoverSlot] : null;
   const filled = STATION_IDS.filter((id) => (stationEquip[id] || []).length > 0).length;
 
@@ -22,10 +20,9 @@ export default function LabMap({ stationEquip, stationNames, hoverSlot, setHover
 
   const benchBox = (id, r) => {
     const equip = stationEquip[id] || [];
-    const names = displayNames(id, stationNames);
     const isHov = hoverSlot === id;
     const fill = equip.length === 0 ? C.slot : "#1d3a3a";
-    const lines = wrapLabel(names.join(" / ") || "(unnamed)", 12);
+    const lines = wrapLabel(STATION_NAME[id], 12);
     return (
       <g key={id} onMouseEnter={() => setHoverSlot(id)}>
         <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={fill} stroke={isHov ? C.teal : C.slotLine} strokeWidth={isHov ? 2 : 1.2} />
@@ -86,7 +83,7 @@ export default function LabMap({ stationEquip, stationNames, hoverSlot, setHover
       {hov && (
         <div style={{ position: "absolute", top: 14, right: 14, width: 240, background: "#0a1017f2", border: `1px solid ${C.teal}`, borderRadius: 9, padding: "10px 12px", pointerEvents: "none", backdropFilter: "blur(3px)", boxShadow: "0 8px 24px #0008" }}>
           <div style={{ fontFamily: MONO, fontWeight: 700, color: C.teal, fontSize: 13 }}>{hoverSlot}</div>
-          <div style={{ color: C.muted, fontSize: 11.5, marginBottom: 6 }}>{displayNames(hoverSlot, stationNames).join(" · ") || "(unnamed station)"}</div>
+          <div style={{ color: C.muted, fontSize: 11.5, marginBottom: 6 }}>{hoverSlot ? STATION_NAME[hoverSlot] : ""}</div>
           {hov.length > 0
             ? <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11 }}>{hov.map((e) => <li key={e} style={{ color: C.text }}>{e}</li>)}</ul>
             : <div style={{ fontSize: 11, color: C.muted }}>no equipment mapped here</div>}

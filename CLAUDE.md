@@ -87,6 +87,15 @@ for the far pair, which has headroom) and leaves the full name to the hover pane
 to decide label placement and, for routing, to reuse the same "fixture-involving
 paths go via the back-walkway rail" pixel logic for both groups.
 
+Every station — all 24 benches plus the 5 fixtures — has exactly one fixed,
+hardcoded name (`BENCH_NAMES` for the benches, merged with each fixture's own
+`name` into `STATION_NAME`, keyed by station id). These are the lab's real
+station names (e.g. `A3` is "Hamilton", `D3` is "PCR") and are never supplied by
+a pasted table — `NAME_TO_STATION_ID` is the case-insensitive reverse lookup
+`labTable.js` uses to resolve a pasted name back to its internal id. The A1-H3/
+SHARPS-style ids stay purely internal, driving the geometry/distance model and
+map layout; nothing user-facing needs to know them.
+
 Each fixture is also a piece of equipment in its own right, permanently
 "installed" at its own station — `FIXTURE_EQUIPMENT` (`data.js`) names one
 ("Sharps", "Recycle", "Biohazardous Waste", "Sink", "Consumables") per fixture.
@@ -105,22 +114,23 @@ so there's no seam where they join.
 
 **Table parsing (`src/labTable.js`)** — `parseLabTable(raw)` takes a pasted
 spreadsheet table (tab-separated; falls back to comma-separated, though the comma
-fallback can't disambiguate a multi-location cell from the row delimiter — tab-
-separated paste is the reliable path) with columns `[Equipment, Station Name?,
-Station Location]`. Either of the last two columns may list more than one station
-for the same equipment row, comma- or semicolon-separated (e.g. `F1, F2, F3` — a
-shaker that lives at three benches) — every valid location gets the equipment added
-to it, and station names pair up with locations by position (or the single name is
-reused across all locations if only one is given). Station locations must land on
-the fixed A1–H3 grid; invalid ones are reported per-location without dropping the
-rest of that row. Auto-detects and skips a header row. Before returning,
-`withFixtureEquipment` merges in the 5 baseline `FIXTURE_EQUIPMENT` entries (see
-above) regardless of what was parsed — a pasted row that also maps real equipment
-to a fixture station (e.g. "Autoclave Bags" at `WASTE`) adds alongside the
-baseline entry rather than replacing it. Returns `equipToStations` (equipment →
-station codes), `stationEquip` (station → equipment list), `stationNames`
-(station → display name(s)), and `errors` so bad paste data is visible instead of
-silently dropped.
+fallback can't disambiguate a multi-station cell from the row delimiter — tab-
+separated paste is the reliable path) with columns `[Equipment, Station Name]`.
+The Station Name cell may list more than one station for the same equipment row,
+comma- or semicolon-separated (e.g. `GC-MS 1, GC-MS 2` — a shaker that lives at
+two stations) — every name is matched case-insensitively against `NAME_TO_
+STATION_ID` (data.js) and every valid one gets the equipment added to it; invalid
+names are reported per-location without dropping the rest of that row. There is
+no location-code column at all — a pasted table only ever names equipment and
+the station it lives at, never an A1-H3/SHARPS-style id. Auto-detects and skips a
+header row. Before returning, `withFixtureEquipment` merges in the 5 baseline
+`FIXTURE_EQUIPMENT` entries (see above) regardless of what was parsed — a pasted
+row that also maps real equipment to a fixture station (e.g. "Autoclave Bags" at
+"Biohazard Waste") adds alongside the baseline entry rather than replacing it.
+Returns `equipToStations` (equipment → station ids), `stationEquip` (station id
+→ equipment list), and `errors` so bad paste data is visible instead of silently
+dropped. Display names are never parsed from the table — `STATION_NAME` in
+data.js is the single source of truth everywhere a name is shown.
 
 **Protocol generation (`src/protocolGen.js`)** — `generateProtocols(equipToStations,
 opts)` builds `count` fake protocols, each a random-length (`minSteps`–`maxSteps`)
@@ -167,6 +177,12 @@ to the bookend rule (it's a single-purpose fixture-visit, not a simulated protoc
 
 **UI (`src/`)** — two tabs driven by `App.jsx`, sharing one parsed `labData`
 (`parseLabTable` over the raw pasted text, memoized in `App.jsx`):
+- `App.jsx`: also owns the raw pasted text's persistence — it's read from
+  `localStorage` (`damp-lab-raw-table` key) on boot via `loadStoredTable`, so the
+  last-used equipment list loads automatically, and a `useEffect` writes it back on
+  every change, so pasting a new table over it overwrites what's stored. Storage
+  errors (private browsing, disabled storage) are swallowed — the app just falls
+  back to a blank table rather than crashing.
 - `LabBuilderTab.jsx`: the paste textarea, row-error list, and the `LabMap.jsx` render
   of the resulting station/equipment layout.
 - `ProtocolGeneratorTab.jsx`: controls for protocol count / min-max steps / seed, a
@@ -174,15 +190,17 @@ to the bookend rule (it's a single-purpose fixture-visit, not a simulated protoc
   Read-or-Write type per step) beside a larger `LabMap.jsx` — the map is the point of
   the page, so it gets the majority of the width. Selecting a protocol highlights its
   routed bench-to-bench path via the `highlightPath` prop.
-- `LabMap.jsx`: pure rendering component — takes `stationEquip`/`stationNames` (and
-  optionally `highlightPath`, an ordered list of station codes) and draws the 24-bench
-  SVG grid plus all 5 walkways as plain unlabeled open lanes. A multi-step
-  `highlightPath` is expanded through `routeWaypoints` per consecutive pair into one
-  continuous **solid** line (always touching the front of every bench it uses and the
-  middle of every walkway it transits) — never a dashed line or one cutting through a
-  bench. A station revisited by non-consecutive steps gets one merged "1,3"-style
-  badge instead of a second marker silently overlapping the first. Has no simulation
-  state; it only knows what's in the parsed table.
+- `LabMap.jsx`: pure rendering component — takes `stationEquip` (and optionally
+  `highlightPath`, an ordered list of station ids) and draws the 24-bench SVG grid
+  plus all 5 walkways as plain unlabeled open lanes. Every bench/fixture label comes
+  straight from `STATION_NAME` in data.js, never a prop — there's nothing left for a
+  pasted table to customize. A multi-step `highlightPath` is expanded through
+  `routeWaypoints` per consecutive pair into one continuous **solid** line (always
+  touching the front of every bench it uses and the middle of every walkway it
+  transits) — never a dashed line or one cutting through a bench. A station revisited
+  by non-consecutive steps gets one merged "1,3"-style badge instead of a second
+  marker silently overlapping the first. Has no simulation state; it only knows
+  what's in the parsed table.
 - `Controls.jsx`: shared widgets (`NumField`, `Dropdown`, `StatCard`, `InfoDot`,
   `Slider`, `Toggle`, `Section`, `Panel`) carried over from the original sim UI.
 
@@ -198,10 +216,12 @@ to the bookend rule (it's a single-purpose fixture-visit, not a simulated protoc
   settings + seed always produce the same protocols — keep any new randomness routed
   through that seeded stream rather than `Math.random()`.
 - The bench grid (`SLOTS` in `data.js`) is fixed at A1–H3, plus the 5 fixed fixtures
-  in `FIXTURES`; `labTable.js` validates pasted station codes against the combined
-  `STATION_IDS` list. If the grid ever needs to grow (more rows/columns, storage
-  aisles back in scope) or a fixture's dimensions/position change, it lives entirely
-  in `data.js` — nothing else hardcodes bench or fixture positions. If the physical
+  in `FIXTURES`, and every one of those 29 stations has a fixed name in
+  `BENCH_NAMES`/`STATION_NAME`; `labTable.js` validates pasted station names against
+  `NAME_TO_STATION_ID`, not the ids directly. If the grid ever needs to grow (more
+  rows/columns, storage aisles back in scope), a fixture's dimensions/position
+  change, or a station's real-world name changes, it all lives in `data.js` —
+  nothing else hardcodes bench/fixture positions or names. If the physical
   reference measurements change, they're the `*_FT` constants at the top of
   `data.js` — `routeDistanceFt`/`routeWaypoints` derive everything else from them, so
   nothing else needs updating.

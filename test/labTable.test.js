@@ -3,50 +3,41 @@ import assert from "node:assert/strict";
 import { parseLabTable } from "../src/labTable.js";
 
 test("parses a header row and tab-separated data", () => {
-  const raw = "Equipment\tStation Name\tStation Location\nOpentrons Flex Robot\tAutomation Prep\tA1\nGel Doc\tGel Imaging\tC3";
+  const raw = "Equipment\tStation Name\nOpentrons Flex Robot\tHamilton\nGel Doc\tGel Imaging";
   const t = parseLabTable(raw);
   assert.equal(t.errors.length, 0);
   assert.equal(t.rowCount, 2);
-  assert.deepEqual(t.equipToStations["Opentrons Flex Robot"], ["A1"]);
+  assert.deepEqual(t.equipToStations["Opentrons Flex Robot"], ["A3"]);
   assert.deepEqual(t.stationEquip["C3"], ["Gel Doc"]);
-  assert.deepEqual(t.stationNames["A1"], ["Automation Prep"]);
 });
 
-test("falls back to comma-separated rows and lowercases station locations get normalized", () => {
-  const raw = "Pipette,Prep Bench,a1\nCentrifuge,DNA Prep,d2";
+test("falls back to comma-separated rows and matches station names case-insensitively", () => {
+  const raw = "Pipette,hamilton\nCentrifuge,pcr";
   const t = parseLabTable(raw);
   assert.equal(t.errors.length, 0);
-  assert.deepEqual(t.equipToStations["Pipette"], ["A1"]);
-  assert.deepEqual(t.equipToStations["Centrifuge"], ["D2"]);
+  assert.deepEqual(t.equipToStations["Pipette"], ["A3"]);
+  assert.deepEqual(t.equipToStations["Centrifuge"], ["D3"]);
 });
 
 test("one equipment can map to multiple stations across rows", () => {
-  const raw = "Pipette\tPrep Bench\tA1\nPipette\tDry Chem\tB2";
+  const raw = "Pipette\tHamilton\nPipette\tDry Chemical Prep";
   const t = parseLabTable(raw);
-  assert.deepEqual(t.equipToStations["Pipette"], ["A1", "B2"]);
+  assert.deepEqual(t.equipToStations["Pipette"], ["A3", "B2"]);
 });
 
-test("flags invalid station locations and missing equipment without throwing", () => {
-  const raw = "Equipment\tStation Name\tStation Location\nGood Equip\tPrep\tA1\nBad Station\tPrep\tZ9\n\tPrep\tA2";
+test("flags invalid station names and missing equipment without throwing", () => {
+  const raw = "Equipment\tStation Name\nGood Equip\tHamilton\nBad Station\tNot A Real Station\n\tPCR";
   const t = parseLabTable(raw);
   assert.equal(t.rowCount, 1);
   assert.equal(t.errors.length, 2);
-  assert.match(t.errors[0], /Z9/);
+  assert.match(t.errors[0], /Not A Real Station/);
 });
 
 test("handles a header-less table without dropping the first data row", () => {
-  const raw = "Pipette\tPrep Bench\tA1";
+  const raw = "Pipette\tHamilton";
   const t = parseLabTable(raw);
   assert.equal(t.rowCount, 1);
-  assert.deepEqual(t.equipToStations["Pipette"], ["A1"]);
-});
-
-test("station name is optional", () => {
-  const raw = "Pipette\t\tA1";
-  const t = parseLabTable(raw);
-  assert.equal(t.errors.length, 0);
-  assert.deepEqual(t.equipToStations["Pipette"], ["A1"]);
-  assert.equal(t.stationNames["A1"], undefined);
+  assert.deepEqual(t.equipToStations["Pipette"], ["A3"]);
 });
 
 test("empty input parses cleanly", () => {
@@ -55,40 +46,30 @@ test("empty input parses cleanly", () => {
   assert.equal(t.errors.length, 0);
 });
 
-test("one row can list multiple locations for one equipment, sharing a single station name", () => {
-  const raw = "Incubator Shaker\tMED Prep\tF1, F2, F3";
+test("one row can list multiple station names for one equipment", () => {
+  const raw = "Incubator Shaker\tGC-MS 1, GC-MS 2, Microbial Incubators";
   const t = parseLabTable(raw);
   assert.equal(t.errors.length, 0);
   assert.equal(t.rowCount, 1);
-  assert.deepEqual(t.equipToStations["Incubator Shaker"], ["F1", "F2", "F3"]);
+  assert.deepEqual(t.equipToStations["Incubator Shaker"], ["E2", "F2", "F3"]);
   assert.deepEqual(t.stationEquip["F2"], ["Incubator Shaker"]);
-  assert.deepEqual(t.stationNames["F3"], ["MED Prep"]);
 });
 
-test("multiple locations pair up with multiple station names by position", () => {
-  const raw = "Microscope\tSpectroscopy A; Spectroscopy B\tG1, G2";
-  const t = parseLabTable(raw);
-  assert.equal(t.errors.length, 0);
-  assert.deepEqual(t.equipToStations["Microscope"], ["G1", "G2"]);
-  assert.deepEqual(t.stationNames["G1"], ["Spectroscopy A"]);
-  assert.deepEqual(t.stationNames["G2"], ["Spectroscopy B"]);
-});
-
-test("a bad location inside a multi-location cell is reported without dropping the valid ones", () => {
-  const raw = "Shaker\tSpectroscopy\tG1, Z9, G3";
+test("a bad name inside a multi-station cell is reported without dropping the valid ones", () => {
+  const raw = "Shaker\tResearch, Not A Real Station, Small Equipment";
   const t = parseLabTable(raw);
   assert.equal(t.rowCount, 1);
   assert.equal(t.errors.length, 1);
-  assert.match(t.errors[0], /Z9/);
-  assert.deepEqual(t.equipToStations["Shaker"], ["G1", "G3"]);
+  assert.match(t.errors[0], /Not A Real Station/);
+  assert.deepEqual(t.equipToStations["Shaker"], ["G1", "H1"]);
 });
 
-test("the 5 baseline fixtures are valid station locations, same as a bench code", () => {
-  const raw = "Autoclave Bags\tBiohazard Disposal\tWASTE\nUsed Tips\tSharps Disposal\tsharps";
+test("the 5 fixtures are valid station names, matched by their display name", () => {
+  const raw = "Autoclave Bags\tBiohazard Waste\nUsed Tips\tsharps bin";
   const t = parseLabTable(raw);
   assert.equal(t.errors.length, 0);
   assert.deepEqual(t.equipToStations["Autoclave Bags"], ["WASTE"]);
-  assert.deepEqual(t.equipToStations["Used Tips"], ["SHARPS"]); // lowercase input normalizes to uppercase
+  assert.deepEqual(t.equipToStations["Used Tips"], ["SHARPS"]); // case-insensitive
 });
 
 test("the 5 fixtures are always present as their own baseline equipment, even on an empty paste", () => {
@@ -102,7 +83,7 @@ test("the 5 fixtures are always present as their own baseline equipment, even on
 });
 
 test("a pasted row at a fixture station adds alongside the baseline fixture equipment, not instead of it", () => {
-  const raw = "Autoclave Bags\tBiohazard Disposal\tWASTE";
+  const raw = "Autoclave Bags\tBiohazard Waste";
   const t = parseLabTable(raw);
   assert.deepEqual(t.stationEquip["WASTE"], ["Autoclave Bags", "Biohazardous Waste"]);
 });

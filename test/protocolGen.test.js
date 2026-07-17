@@ -5,13 +5,18 @@ import { parseLabTable } from "../src/labTable.js";
 import { BENCH_DIST_FT } from "../src/data.js";
 
 const table = () => parseLabTable(`
-Opentrons Flex Robot\tAutomation Prep\tA1
-Gel Doc\tGel Imaging\tC3
-Thermal Cycler\tDNA Prep\tD2
-Centrifuge\tDNA Prep\tD3
-Microscope\tSpectroscopy\tG1
-Vortex Mixer\tSpectroscopy\tG2
+Opentrons Flex Robot\tOpentrons
+Gel Doc\tGel Imaging
+Thermal Cycler\tDNA Prep
+Centrifuge\tPCR
+Microscope\tResearch
+Vortex Mixer\tImaging / Research
 `.trim());
+
+test("the shared test fixture table parses with no errors", () => {
+  const t = table();
+  assert.equal(t.errors.length, 0);
+});
 
 test("same seed produces identical protocols (reproducible)", () => {
   const { equipToStations } = table();
@@ -75,12 +80,13 @@ test("equipToStations with no fixtures mapped at all adds no extra protocol beyo
 
 test("every fixture with mapped equipment is visited by at least one protocol", () => {
   const fixtureTable = parseLabTable(`
-Used Pipette Tips\tSharps Disposal\tSHARPS
-Paper Waste\tRecycling\tRECYCLE
-Autoclave Bags\tBiohazard Disposal\tWASTE
-Glassware\tWash Station\tSINK
-Pipette Tips Restock\tConsumables\tCONSUM
+Used Pipette Tips\tSharps Bin
+Paper Waste\tRecycling Bin
+Autoclave Bags\tBiohazard Waste
+Glassware\tSink
+Pipette Tips Restock\tConsumables Storage
 `.trim());
+  assert.equal(fixtureTable.errors.length, 0);
   const { protocols } = generateProtocols(fixtureTable.equipToStations, { count: 2, minSteps: 2, maxSteps: 2, seed: 1 });
   const visited = new Set(protocols.flatMap((p) => p.steps.map((s) => s.station)));
   for (const fixture of ["SHARPS", "RECYCLE", "WASTE", "SINK", "CONSUM"]) {
@@ -91,13 +97,18 @@ Pipette Tips Restock\tConsumables\tCONSUM
 });
 
 const fullTable = () => parseLabTable(`
-Opentrons Flex Robot\tAutomation Prep\tA1
-Gel Doc\tGel Imaging\tC3
-Microscope\tSpectroscopy\tG1
-Used Pipette Tips\tSharps Disposal\tSHARPS
-Autoclave Bags\tBiohazard Disposal\tWASTE
-Pipette Tips Restock\tConsumables\tCONSUM
+Opentrons Flex Robot\tOpentrons
+Gel Doc\tGel Imaging
+Microscope\tResearch
+Used Pipette Tips\tSharps Bin
+Autoclave Bags\tBiohazard Waste
+Pipette Tips Restock\tConsumables Storage
 `.trim());
+
+test("the shared full-table test fixture parses with no errors", () => {
+  const t = fullTable();
+  assert.equal(t.errors.length, 0);
+});
 
 test("every protocol opens with a retrieval step at consumables", () => {
   const { equipToStations } = fullTable();

@@ -46,7 +46,7 @@ export default function ProtocolGeneratorTab({ labData }) {
           </div>
           <div style={{ position: "sticky", top: 12, alignSelf: "start" }}>
             <LabMap
-              stationEquip={labData.stationEquip} stationNames={labData.stationNames}
+              stationEquip={labData.stationEquip}
               hoverSlot={hoverSlot} setHoverSlot={setHoverSlot}
               highlightPath={selected ? selected.steps.map((s) => s.station) : []}
             />

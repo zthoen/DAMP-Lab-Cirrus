@@ -157,6 +157,31 @@ export const front = (id) => {
 };
 
 export const STATION_IDS = [...Object.keys(SLOTS), ...Object.keys(FIXTURES)];
+
+// Every bench has a fixed, hardcoded name — the physical lab's real station
+// names, not something a pasted table supplies. Row 1 is nearest the front of
+// the room, row 3 nearest the back wall/fixtures; columns run A-H left to right.
+export const BENCH_NAMES = {
+  A1: "Opentrons", B1: "Dry Chemical Weighing", C1: "NanoDrop", D1: "DNA/RNA Prep",
+  E1: "Microbial Culture Prep", F1: "Microbial Culture", G1: "Research", H1: "Small Equipment",
+  A2: "Automation Prep 1", B2: "Dry Chemical Prep", C2: "Gel Electrophoresis", D2: "DNA Prep",
+  E2: "Microbial Incubators", F2: "GC-MS 1", G2: "Imaging / Research", H2: "Transfyr",
+  A3: "Hamilton", B3: "Automation Prep 2", C3: "Gel Imaging", D3: "PCR",
+  E3: "Cell Culture Plate Reader", F3: "GC-MS 2", G3: "Vacuum Oven / Research", H3: "Prototyping",
+};
+
+// Every station (bench or fixture) has exactly one fixed name — this is what a
+// pasted table's "Station Name" column is matched against (see labTable.js),
+// not the internal A1-H3/SHARPS-style ids, which are purely an implementation
+// detail of the geometry model below.
+export const STATION_NAME = { ...BENCH_NAMES };
+for (const [id, f] of Object.entries(FIXTURES)) STATION_NAME[id] = f.name;
+
+// Reverse lookup for parsing a pasted station name back to its internal id,
+// case-insensitively.
+export const NAME_TO_STATION_ID = {};
+for (const [id, name] of Object.entries(STATION_NAME)) NAME_TO_STATION_ID[name.toLowerCase()] = id;
+
 const rowOf = (id) => Number(id[1]);
 
 function benchToBenchFt(aId, bId) {

@@ -1,58 +1,55 @@
-import { STATION_IDS, FIXTURE_EQUIPMENT } from "./data.js";
+import { FIXTURE_EQUIPMENT, NAME_TO_STATION_ID } from "./data.js";
 
-export const isValidStationCode = (code) => STATION_IDS.includes(code);
+export const isValidStationName = (name) => Object.prototype.hasOwnProperty.call(NAME_TO_STATION_ID, name.toLowerCase());
 const HEADER_WORDS = /^(equipment|instrument|device)$/i;
 
 const splitRow = (line) => (line.includes("\t") ? line.split("\t") : line.split(","))
   .map((c) => c.trim());
-// A single cell can list more than one station ("A1, A2, A3" or "A1; A2"), since one
-// piece of equipment (an incubator shaker, a fridge, ...) commonly lives at several
-// benches at once.
+// A single cell can list more than one station ("NanoDrop, PCR" or "NanoDrop; PCR"),
+// since one piece of equipment (an incubator shaker, a fridge, ...) commonly lives at
+// several stations at once.
 const splitMulti = (cell) => (cell || "").split(/[,;]/).map((c) => c.trim()).filter(Boolean);
 
 /* Parses a table pasted from a spreadsheet (tab-separated; falls back to comma-
-   separated) with columns [Equipment, Station Name, Station Location]. Station
-   locations must land on the fixed A1-H3 bench grid or name one of the 5 baseline
-   fixtures (see STATION_IDS in data.js). Either cell may list multiple stations for
-   the same equipment row (comma/semicolon-separated) — every valid location gets
-   the equipment added to it; station names pair up by position when both lists are
-   the same length, otherwise the last given name is reused for any extra locations.
-   Returns every lookup the Lab Builder / Protocol Generator need, plus row-level
-   errors so bad paste data is visible instead of silently dropped. */
+   separated) with columns [Equipment, Station Name]. Station names must match one
+   of the lab's fixed station names exactly (case-insensitively) — see STATION_NAME
+   in data.js; the internal A1-H3/SHARPS-style ids are never something a pasted
+   table needs to know about. A cell may list multiple station names for the same
+   equipment row (comma/semicolon-separated) — every valid one gets the equipment
+   added to it. Invalid names are reported per-location without dropping the rest of
+   that row. Auto-detects and skips a header row. Returns `equipToStations`
+   (equipment → station ids), `stationEquip` (station id → equipment list), and
+   `errors` so bad paste data is visible instead of silently dropped. */
 export function parseLabTable(raw) {
   const lines = String(raw || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const errors = [];
-  if (lines.length === 0) return withFixtureEquipment({ equipToStations: {}, stationEquip: {}, stationNames: {}, rowCount: 0, errors });
+  if (lines.length === 0) return withFixtureEquipment({ equipToStations: {}, stationEquip: {}, rowCount: 0, errors });
 
   let rows = lines.map(splitRow);
   const [first] = rows;
-  const firstLocs = splitMulti(first[2]);
-  if (HEADER_WORDS.test(first[0] || "") || !firstLocs.some((l) => isValidStationCode(l.toUpperCase()))) {
+  const firstNames = splitMulti(first[1]);
+  if (HEADER_WORDS.test(first[0] || "") || !firstNames.some(isValidStationName)) {
     rows = rows.slice(1);
   }
 
   const equipToStations = {};
   const stationEquip = {};
-  const stationNames = {};
   let rowCount = 0;
 
   rows.forEach((cols, i) => {
     const lineNo = i + 2; // +1 for header, +1 for 1-indexing
     const equipment = (cols[0] || "").trim();
     const names = splitMulti(cols[1]);
-    const locs = splitMulti(cols[2]);
     if (!equipment) { errors.push(`Row ${lineNo}: missing equipment name`); return; }
-    if (locs.length === 0) { errors.push(`Row ${lineNo}: missing station location`); return; }
+    if (names.length === 0) { errors.push(`Row ${lineNo}: missing station name`); return; }
 
     let addedAny = false;
-    locs.forEach((raw, idx) => {
-      const station = raw.toUpperCase();
-      if (!isValidStationCode(station)) { errors.push(`Row ${lineNo}: "${raw}" is not a valid station location (expected A1-H3, or a fixture like SHARPS/RECYCLE/WASTE/SINK/CONSUM)`); return; }
+    names.forEach((raw) => {
+      if (!isValidStationName(raw)) { errors.push(`Row ${lineNo}: "${raw}" is not a valid station name`); return; }
+      const station = NAME_TO_STATION_ID[raw.toLowerCase()];
       addedAny = true;
       (equipToStations[equipment] ??= new Set()).add(station);
       (stationEquip[station] ??= new Set()).add(equipment);
-      const name = names[idx] ?? names[names.length - 1];
-      if (name) (stationNames[station] ??= new Set()).add(name);
     });
     if (addedAny) rowCount++;
   });
@@ -60,7 +57,6 @@ export function parseLabTable(raw) {
   return withFixtureEquipment({
     equipToStations: mapValues(equipToStations, (s) => [...s].sort()),
     stationEquip: mapValues(stationEquip, (s) => [...s].sort()),
-    stationNames: mapValues(stationNames, (s) => [...s]),
     rowCount,
     errors,
   });
