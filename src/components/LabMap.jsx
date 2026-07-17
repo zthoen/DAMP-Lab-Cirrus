@@ -1,6 +1,13 @@
 import React from "react";
 import { VIEW_W, VIEW_H, C, MONO, wrapLabel } from "../constants.js";
-import { SLOTS, FIXTURES, STATION_IDS, STATION_NAME, center, routeWaypoints, WALKWAY_PATH, isNearFixture, BENCH_LEN_FT, WALKWAY_WIDTH_FT, BACK_AISLE_FT } from "../data.js";
+import { SLOTS, FIXTURES, STATION_IDS, STATION_NAME, center, routeWaypoints, WALKWAY_PATH, isNearFixture, FIXTURE_PX_PER_FT } from "../data.js";
+
+// A short ruler in an empty floor corner (below column A, which never has a
+// fixture under it) — the one honest, literal scale reference on the map,
+// since bench spacing itself is stylized for legibility rather than to scale.
+const SCALE_FT = 5;
+const SCALE_X = 30, SCALE_Y = 330;
+const SCALE_LEN = SCALE_FT * FIXTURE_PX_PER_FT;
 
 // Packs a station's visited-step numbers into as few comma-joined rows as fit
 // within maxChars each, greedily — used to keep a busy badge's rows no wider
@@ -81,6 +88,13 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
         {Object.entries(SLOTS).map(([id, r]) => benchBox(id, r))}
         {Object.entries(FIXTURES).map(([id, r]) => fixtureBox(id, r))}
 
+        <g>
+          <line x1={SCALE_X} y1={SCALE_Y} x2={SCALE_X + SCALE_LEN} y2={SCALE_Y} stroke={C.muted} strokeWidth={1.5} />
+          <line x1={SCALE_X} y1={SCALE_Y - 5} x2={SCALE_X} y2={SCALE_Y + 5} stroke={C.muted} strokeWidth={1.5} />
+          <line x1={SCALE_X + SCALE_LEN} y1={SCALE_Y - 5} x2={SCALE_X + SCALE_LEN} y2={SCALE_Y + 5} stroke={C.muted} strokeWidth={1.5} />
+          <text x={SCALE_X + SCALE_LEN / 2} y={SCALE_Y + 16} textAnchor="middle" fontFamily={MONO} fontSize={9.5} fill={C.muted}>{SCALE_FT} ft</text>
+        </g>
+
         {routedPts.length > 1 && (
           <polyline points={routedPts.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={C.teal} strokeWidth={2} opacity={0.9} />
         )}
@@ -123,9 +137,6 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
         <span><span style={{ display: "inline-block", width: 10, height: 10, background: C.slot, border: `1px solid ${C.slotLine}`, verticalAlign: -1 }} /> empty</span>
         <span><span style={{ display: "inline-block", width: 10, height: 10, background: "#1d3a3a", verticalAlign: -1 }} /> has equipment</span>
         <span style={{ marginLeft: "auto" }}>{filled}/{STATION_IDS.length} stations in use</span>
-      </div>
-      <div style={{ fontSize: 10.5, color: C.muted, fontFamily: MONO, marginTop: 4 }}>
-        reference: bench spacing ~{BENCH_LEN_FT}ft · walkway width ~{WALKWAY_WIDTH_FT}ft · back walkway ~{BACK_AISLE_FT}ft
       </div>
     </div>
   );

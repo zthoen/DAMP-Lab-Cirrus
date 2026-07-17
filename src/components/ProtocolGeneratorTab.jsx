@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { C, MONO } from "../constants.js";
+import { STATION_NAME } from "../data.js";
 import { NumField } from "./Controls.jsx";
 import { generateProtocols } from "../protocolGen.js";
 import LabMap from "./LabMap.jsx";
@@ -77,8 +78,8 @@ function ProtocolCard({ p, selected, onSelect }) {
             {p.steps.map((s, i) => (
               <tr key={i} style={{ borderTop: i ? `1px solid ${C.panel2}` : "none" }}>
                 <td style={{ padding: "4px 6px", color: C.muted, fontFamily: MONO }}>{i + 1}</td>
-                <td style={{ padding: "4px 6px", color: C.teal, fontFamily: MONO, fontWeight: 700 }}>{s.station}</td>
-                <td style={{ padding: "4px 6px", color: C.text, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.equipment}>{s.equipment}</td>
+                <td style={{ padding: "4px 6px", color: C.teal, fontWeight: 700, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={STATION_NAME[s.station]}>{STATION_NAME[s.station]}</td>
+                <td style={{ padding: "4px 6px", color: C.text, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.equipment}>{s.equipment}</td>
                 <td style={{ padding: "4px 6px", textAlign: "right", color: s.action === "Write" ? C.amber : C.blue, fontFamily: MONO, fontSize: 11 }}>{s.action}</td>
               </tr>
             ))}

@@ -49,7 +49,10 @@ const walkwayCenterX = (g) => {
    extent, facing the wall) x "width" (the left-to-right extent), scaled up for
    map legibility since a couple of feet would otherwise round to an unreadable
    box. */
-const FIXTURE_PX_PER_FT = 16;
+// Exported so the map can draw an honest pixel-accurate scale marker (see
+// LabMap.jsx) — the only part of the floor plan actually drawn to a literal
+// feet-to-pixel scale; bench spacing is stylized for legibility, not to scale.
+export const FIXTURE_PX_PER_FT = 16;
 const FIXTURE_GAP = 12;
 const box = (lengthFt, widthFt) => ({ w: Math.round(widthFt * FIXTURE_PX_PER_FT), h: Math.round(lengthFt * FIXTURE_PX_PER_FT) });
 

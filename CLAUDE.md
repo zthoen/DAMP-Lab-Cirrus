@@ -253,8 +253,11 @@ first, not just the sum of each step's own smaller total), and `errors`.
 - `ProtocolGeneratorTab.jsx` (tab label "Protocol Generator"): controls for protocol count / min-max steps / seed, a
   "Generate" button, and a column of cards per generated protocol (station/equipment/
   Read-or-Write type per step) beside a larger `LabMap.jsx` — the map is the point of
-  the page, so it gets the majority of the width. Selecting a protocol highlights its
-  routed bench-to-bench path via the `highlightPath` prop.
+  the page, so it gets the majority of the width. Each step's Station column shows
+  `STATION_NAME[s.station]` (with the full name as a `title` tooltip if it's
+  truncated) rather than the internal id — a technician reading the card should
+  never need to know a bench is "A3" to recognize it's "Hamilton". Selecting a
+  protocol highlights its routed bench-to-bench path via the `highlightPath` prop.
 - `LabMap.jsx`: pure rendering component — takes `stationEquip` (and optionally
   `highlightPath`, an ordered list of station ids) and draws the 24-bench SVG grid
   plus all 5 walkways as plain unlabeled open lanes. Every bench/fixture label comes
@@ -270,16 +273,21 @@ first, not just the sum of each step's own smaller total), and `errors`.
   few comma-joined rows as fit a safe per-row width (font size also steps down as
   the count grows: 9px for up to 3 numbers, 8px up to 6, 7px beyond that), so the
   badge grows taller rather than wider and every number is still shown, never
-  collapsed to a count. Has no simulation state; it only knows what's in the
-  parsed table.
+  collapsed to a count. A small ruler (`SCALE_FT`/`SCALE_LEN`, drawn with the
+  exported `FIXTURE_PX_PER_FT`) sits in the empty floor corner below column A as
+  the map's one literal, pixel-accurate distance reference — bench spacing itself
+  is stylized for legibility, not drawn to that same scale, so a text line
+  spelling out several "~Nft" figures for different parts of the floor would
+  overstate how precise any of it is; one honest "5 ft" tick mark is what's here
+  instead. Has no simulation state; it only knows what's in the parsed table.
 - `ProtocolImportTab.jsx` (tab label "Protocol Visualizer"): the paste textarea
   for a real protocol, an error list, and a column of cards beside a `LabMap.jsx`
   — a summary card for the whole protocol (selected by default, titled from
   `parsed.name` — the protocol's own pasted name — falling back to "Full
   Protocol" only if the paste didn't have one) plus one card per step, each with
   its own substep table (station/equipment/Read-or-Write, mirroring
-  `ProtocolGeneratorTab`'s card layout); an unresolved substep shows `?` for its
-  station in red instead of a code. Selecting a step highlights just that step's
+  `ProtocolGeneratorTab`'s card layout and its Station-shows-the-name treatment);
+  an unresolved substep shows `?` in red instead of a name. Selecting a step highlights just that step's
   own `path`; the summary card highlights `fullPath`, the whole route start to
   finish. The pasted protocol text itself is persisted to `sessionStorage`
   (`damp-lab-raw-protocol` key, read on mount / written on every change,

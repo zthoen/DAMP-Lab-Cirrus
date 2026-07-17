@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { C, MONO } from "../constants.js";
+import { STATION_NAME } from "../data.js";
 import { parseProtocol } from "../protocolImport.js";
 import LabMap from "./LabMap.jsx";
 
@@ -125,8 +126,8 @@ function StepCard({ s, selected, onSelect }) {
             {s.substeps.map((sub, i) => (
               <tr key={i} style={{ borderTop: i ? `1px solid ${C.panel2}` : "none" }}>
                 <td style={{ padding: "4px 6px", color: C.muted, fontFamily: MONO }}>{sub.label}</td>
-                <td style={{ padding: "4px 6px", color: sub.station ? C.teal : C.red, fontFamily: MONO, fontWeight: 700 }}>{sub.station || "?"}</td>
-                <td style={{ padding: "4px 6px", color: C.text, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={sub.equipment}>{sub.equipment}</td>
+                <td style={{ padding: "4px 6px", color: sub.station ? C.teal : C.red, fontWeight: 700, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={sub.station ? STATION_NAME[sub.station] : "unresolved"}>{sub.station ? STATION_NAME[sub.station] : "?"}</td>
+                <td style={{ padding: "4px 6px", color: C.text, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={sub.equipment}>{sub.equipment}</td>
                 <td style={{ padding: "4px 6px", textAlign: "right", color: sub.action === "Write" ? C.amber : C.blue, fontFamily: MONO, fontSize: 11 }}>{sub.action}</td>
               </tr>
             ))}
