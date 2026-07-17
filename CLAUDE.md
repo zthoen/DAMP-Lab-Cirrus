@@ -53,6 +53,24 @@ whatever walkway(s) it uses, to the front and then the center of the destination
 so the map's path overlay always reads as "walk to the aisle, use it, arrive," never
 a line cutting through a bench.
 
+**Fixed utility fixtures (`src/data.js` `FIXTURES`)** — 5 baseline destinations
+beyond the back wall that never move and are otherwise treated exactly like a bench:
+the sharps bin (end of column B), a recycling bin (between it and the biohazard box),
+the biohazard box (end of column C), then the sink and consumables storage
+continuing the same wall run. Real footprints (feet) are kept as *length* (the
+top-to-bottom extent, facing the wall) × *width* (the left-to-right extent) and
+scaled up for map legibility — a 1-2ft bin would otherwise round to an unreadable
+box. Every
+fixture is a full member of `STATION_IDS`, so it's a valid `Station Location` in a
+pasted table and participates in `BENCH_DIST_FT`/`routeWaypoints` like any bench.
+Reaching one always costs one back-walkway crossing (`isFixtureId` branches
+`routeDistanceFt`/`routeWaypoints` accordingly) since fixtures sit strictly beyond
+that walkway, never on the near side with the benches; two fixtures are both already
+past it, so moving between them is pure lateral distance along the wall. Because a
+fixture is a couple of feet wide, it can't hold an ID or name inside its own box the
+way a bench does — `LabMap.jsx` prints its code above the box instead and leaves the
+full name to the hover panel.
+
 **Table parsing (`src/labTable.js`)** — `parseLabTable(raw)` takes a pasted
 spreadsheet table (tab-separated; falls back to comma-separated, though the comma
 fallback can't disambiguate a multi-location cell from the row delimiter — tab-
@@ -116,12 +134,14 @@ actually force movement" is directly visible.
 - Protocol generation is seeded (`mulberry32` in `src/rng.js`) so the same table +
   settings + seed always produce the same protocols — keep any new randomness routed
   through that seeded stream rather than `Math.random()`.
-- The bench grid (`SLOTS` in `data.js`) is fixed at A1–H3; `labTable.js` validates
-  pasted station codes against it. If the grid ever needs to grow (more rows/columns,
-  storage aisles back in scope), it lives entirely in `data.js` — nothing else hardcodes
-  bench positions. If the physical reference measurements change, they're the three
-  `*_FT` constants at the top of `data.js` — `routeDistanceFt`/`routeWaypoints` derive
-  everything else from them, so nothing else needs updating.
+- The bench grid (`SLOTS` in `data.js`) is fixed at A1–H3, plus the 5 fixed fixtures
+  in `FIXTURES`; `labTable.js` validates pasted station codes against the combined
+  `STATION_IDS` list. If the grid ever needs to grow (more rows/columns, storage
+  aisles back in scope) or a fixture's dimensions/position change, it lives entirely
+  in `data.js` — nothing else hardcodes bench or fixture positions. If the physical
+  reference measurements change, they're the three `*_FT` constants at the top of
+  `data.js` — `routeDistanceFt`/`routeWaypoints` derive everything else from them, so
+  nothing else needs updating.
 - The Read/Write keyword list in `stepType.js` is a heuristic, not a lookup table —
   if a new equipment name is consistently misclassified, add its keyword there rather
   than special-casing it in `protocolGen.js`.
