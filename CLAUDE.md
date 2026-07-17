@@ -124,12 +124,25 @@ and `travelFt` (summed `BENCH_DIST_FT` across the sequence, in feet) so "does th
 actually force movement" is directly visible. Protocols are titled `Protocol 1`,
 `Protocol 2`, etc. in generation order.
 
-A random walk over a large equipment pool can easily miss a specific station across
-a small batch, so after the normal draw, `generateProtocols` checks whether every
-one of the 5 fixtures that has equipment mapped to it was actually visited by some
-step; if any weren't, one extra "coverage" protocol is appended that walks to each
-missed fixture in turn (using whatever equipment maps there), so a demo run reliably
-shows the fixtures being used even at low `count`/`minSteps`.
+Every protocol is bookended: it opens with a retrieve-equipment step at consumables
+storage and closes with a dispose-of-waste step at the sharps bin, the biohazard box,
+or (`DOUBLE_DISPOSAL_CHANCE`, 30% of the time) both back to back in a random order —
+`pickDisposalStations` picks from whichever of the two bins actually has equipment
+mapped to it, so a table missing one just closes with the other, and a table missing
+both drops the requirement rather than inventing a step with no real equipment
+behind it (same graceful-degradation approach as everywhere else: a warning, not a
+crash, and the same pattern would extend to a future bookend rule). `minSteps`/
+`maxSteps` are honored inclusive of these bookend steps, bumped up automatically when
+the configured range is too tight to fit them. The random walk that fills the middle
+doesn't avoid the bookend equipment, so a table can end up visiting a disposal bin
+twice — once incidentally in the middle, once for real at the close.
+
+The other 2 fixtures (recycling, sink) aren't bookend steps, but a random walk over a
+large equipment pool can still miss them across a small batch — so after the normal
+draw, `generateProtocols` checks whether every fixture with equipment mapped to it
+was actually visited by some step; if any weren't, one extra "coverage" protocol is
+appended that walks to each missed fixture in turn. This coverage protocol isn't held
+to the bookend rule (it's a single-purpose fixture-visit, not a simulated protocol).
 
 **UI (`src/`)** — two tabs driven by `App.jsx`, sharing one parsed `labData`
 (`parseLabTable` over the raw pasted text, memoized in `App.jsx`):

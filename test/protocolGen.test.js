@@ -87,3 +87,60 @@ Pipette Tips Restock\tConsumables\tCONSUM
   // The coverage protocol (if any) still follows the naming scheme.
   protocols.forEach((p, i) => assert.equal(p.id, `Protocol ${i + 1}`));
 });
+
+const fullTable = () => parseLabTable(`
+Opentrons Flex Robot\tAutomation Prep\tA1
+Gel Doc\tGel Imaging\tC3
+Microscope\tSpectroscopy\tG1
+Used Pipette Tips\tSharps Disposal\tSHARPS
+Autoclave Bags\tBiohazard Disposal\tWASTE
+Pipette Tips Restock\tConsumables\tCONSUM
+`.trim());
+
+test("every protocol opens with a retrieval step at consumables", () => {
+  const { equipToStations } = fullTable();
+  const { protocols } = generateProtocols(equipToStations, { count: 15, minSteps: 4, maxSteps: 8, seed: 21 });
+  for (const p of protocols) assert.equal(p.steps[0].station, "CONSUM", `${p.id} didn't open at CONSUM`);
+});
+
+test("every protocol closes with a disposal step at sharps and/or biohazard waste", () => {
+  const { equipToStations } = fullTable();
+  const { protocols } = generateProtocols(equipToStations, { count: 15, minSteps: 4, maxSteps: 8, seed: 21 });
+  for (const p of protocols) {
+    const last = p.steps[p.steps.length - 1].station;
+    assert.ok(last === "SHARPS" || last === "WASTE", `${p.id} closed at ${last}, not a disposal bin`);
+  }
+});
+
+test("some protocols dispose at both bins back to back, across enough seeds", () => {
+  const { equipToStations } = fullTable();
+  let sawDouble = false;
+  for (let seed = 0; seed < 30 && !sawDouble; seed++) {
+    const { protocols } = generateProtocols(equipToStations, { count: 10, minSteps: 6, maxSteps: 8, seed });
+    for (const p of protocols) {
+      const [secondLast, last] = p.steps.slice(-2).map((s) => s.station);
+      if ((secondLast === "SHARPS" && last === "WASTE") || (secondLast === "WASTE" && last === "SHARPS")) sawDouble = true;
+    }
+  }
+  assert.ok(sawDouble, "never saw a protocol dispose at both bins across 300 protocols");
+});
+
+test("bookend steps are still forced even when minSteps/maxSteps is too tight to fit them", () => {
+  const { equipToStations } = fullTable();
+  const count = 5;
+  const { protocols } = generateProtocols(equipToStations, { count, minSteps: 1, maxSteps: 1, seed: 4 });
+  // Only the main batch (not any auto-appended coverage protocol, which is a
+  // single-purpose fixture-visit and isn't held to the bookend rule) is checked.
+  for (const p of protocols.slice(0, count)) {
+    assert.ok(p.steps.length >= 2, `${p.id} should have at least a retrieve + disposal step`);
+    assert.equal(p.steps[0].station, "CONSUM");
+  }
+});
+
+test("a table without consumables/waste equipment warns and skips the bookend steps", () => {
+  const { equipToStations } = table(); // the base fixture maps nothing to CONSUM/SHARPS/WASTE
+  const out = generateProtocols(equipToStations, { count: 5, minSteps: 3, maxSteps: 5, seed: 9 });
+  assert.ok(out.warnings.some((w) => /Consumables/.test(w)));
+  assert.ok(out.warnings.some((w) => /Sharps|Biohazard/.test(w)));
+  for (const p of out.protocols) assert.notEqual(p.steps[0].station, "CONSUM");
+});
