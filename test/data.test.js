@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { routeDistanceFt, routeWaypoints, BENCH_DIST_FT, STATION_IDS, FIXTURES, center, WALKWAY_WIDTH_FT, BACK_AISLE_FT, BENCH_LEN_FT } from "../src/data.js";
+import { routeDistanceFt, routeWaypoints, BENCH_DIST_FT, STATION_IDS, center, WALKWAY_WIDTH_FT, BACK_AISLE_FT, BENCH_LEN_FT, BENCH_WIDTH_FT } from "../src/data.js";
 
 test("same station is zero distance", () => {
   assert.equal(routeDistanceFt("A1", "A1"), 0);
@@ -12,13 +12,6 @@ test("same-column moves cross bench lengths within their shared walkway, no back
   assert.equal(routeDistanceFt("A3", "A1"), 2 * BENCH_LEN_FT); // symmetric
 });
 
-test("a touching pair (B-C) can't cut through each other — still routes via the back aisle", () => {
-  // B and C touch directly but don't share a walkway (B's walkway is A-B, C's is C-D),
-  // so B1 -> C1 has to detour: down to B3, across the back aisle, up to C1.
-  const expected = 2 * BENCH_LEN_FT + BACK_AISLE_FT + BENCH_LEN_FT + 2 * BENCH_LEN_FT;
-  assert.equal(routeDistanceFt("B1", "C1"), expected);
-});
-
 test("columns sharing one walkway (A-B) cross it directly, no back-aisle detour", () => {
   // Same row: just the walkway width.
   assert.equal(routeDistanceFt("A1", "B1"), WALKWAY_WIDTH_FT);
@@ -26,15 +19,23 @@ test("columns sharing one walkway (A-B) cross it directly, no back-aisle detour"
   assert.equal(routeDistanceFt("A1", "B3"), 2 * BENCH_LEN_FT + WALKWAY_WIDTH_FT);
 });
 
-test("different walkway groups route down, across the back aisle, and up", () => {
-  // A (group AB) -> D (group CD): down 2 rows in AB's walkway, across 2 bench-widths
-  // (A and B/C are 2 and 3 positions apart... use the actual column order A,B,C,D).
-  const expected = 2 * BENCH_LEN_FT + BACK_AISLE_FT + 3 * BENCH_LEN_FT + 2 * BENCH_LEN_FT;
+test("a touching pair (B-C) can't cut through each other — still routes via the back aisle", () => {
+  // B and C touch directly but don't share a walkway (B's walkway is A-B, C's is C-D),
+  // so B1 -> C1 has to detour: down to B3, across the back aisle (one bench-width
+  // apart), up to C1.
+  const expected = 2 * BENCH_LEN_FT + BACK_AISLE_FT + BENCH_WIDTH_FT + 2 * BENCH_LEN_FT;
+  assert.equal(routeDistanceFt("B1", "C1"), expected);
+});
+
+test("different walkway groups route down, across the back aisle (by bench width), and up", () => {
+  // A (group AB) -> D (group CD): down 2 rows, across 3 bench-widths (columns
+  // A,B,C,D are indices 0..3 apart), up 2 rows.
+  const expected = 2 * BENCH_LEN_FT + BACK_AISLE_FT + 3 * BENCH_WIDTH_FT + 2 * BENCH_LEN_FT;
   assert.equal(routeDistanceFt("A1", "D1"), expected);
 });
 
 test("row-3-to-row-3 cross-group move still pays the back-aisle crossing once", () => {
-  assert.equal(routeDistanceFt("A3", "H3"), BACK_AISLE_FT + 7 * BENCH_LEN_FT);
+  assert.equal(routeDistanceFt("A3", "H3"), BACK_AISLE_FT + 7 * BENCH_WIDTH_FT);
 });
 
 test("BENCH_DIST_FT lookup matches routeDistanceFt for every pair", () => {
@@ -47,25 +48,48 @@ test("the 5 baseline fixtures are valid stations alongside the 24 benches", () =
   for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "CONSUM"]) assert.ok(STATION_IDS.includes(id));
 });
 
-test("two fixtures are both already past the back walkway — distance is pure lateral", () => {
-  assert.equal(routeDistanceFt("SHARPS", "WASTE"), Math.abs(FIXTURES.SHARPS.feetX - FIXTURES.WASTE.feetX));
-  assert.equal(routeDistanceFt("SINK", "CONSUM"), Math.abs(FIXTURES.SINK.feetX - FIXTURES.CONSUM.feetX));
-  assert.equal(routeDistanceFt("SHARPS", "SHARPS"), 0);
+test("the sharps/recycling/biohazard trio is aliased to its anchor column's row-3 bench", () => {
+  // Touching row 3 directly means reaching one from its own anchor column's row 3
+  // bench is free, and from elsewhere in that column is the normal same-column hop.
+  assert.equal(routeDistanceFt("B3", "SHARPS"), 0);
+  assert.equal(routeDistanceFt("B1", "SHARPS"), 2 * BENCH_LEN_FT);
+  assert.equal(routeDistanceFt("C3", "WASTE"), 0);
+  // From a different walkway group it's exactly like reaching the anchor's row 3.
+  assert.equal(routeDistanceFt("A1", "SHARPS"), routeDistanceFt("A1", "B3"));
+  assert.equal(routeDistanceFt("D1", "SHARPS"), routeDistanceFt("D1", "B3"));
+  // Recycling straddles both B and C — reachable via whichever is closer.
+  assert.equal(routeDistanceFt("B1", "RECYCLE"), Math.min(routeDistanceFt("B1", "B3"), routeDistanceFt("B1", "C3")));
 });
 
-test("reaching a fixture from a bench always crosses the back aisle once, regardless of walkway group", () => {
-  // A1 (row 1, column A) -> SHARPS: descend 2 rows to the back aisle, cross it, walk
-  // the lateral gap to the fixture.
-  const expected = 2 * BENCH_LEN_FT + BACK_AISLE_FT + Math.abs(0 - FIXTURES.SHARPS.feetX);
-  assert.equal(routeDistanceFt("A1", "SHARPS"), expected);
-  assert.equal(routeDistanceFt("SHARPS", "A1"), expected); // symmetric
-  // A bench already on row 3 skips the descent.
-  assert.equal(routeDistanceFt("C3", "WASTE"), BACK_AISLE_FT + Math.abs(2 * BENCH_LEN_FT - FIXTURES.WASTE.feetX));
+test("two trio members resolve through their two anchor columns", () => {
+  // SHARPS (anchor B) <-> WASTE (anchor C) is exactly a B3<->C3 trip.
+  assert.equal(routeDistanceFt("SHARPS", "WASTE"), routeDistanceFt("B3", "C3"));
+});
+
+test("the sink/consumables pair sits beyond the back walkway — pure lateral between them", () => {
+  const d = routeDistanceFt("SINK", "CONSUM");
+  assert.ok(d > 0);
+  assert.equal(routeDistanceFt("SINK", "SINK"), 0);
+});
+
+test("reaching the far pair from a bench always crosses the back aisle once", () => {
+  const fromRow1 = routeDistanceFt("A1", "SINK");
+  const fromRow3 = routeDistanceFt("C3", "SINK");
+  assert.ok(fromRow1 > fromRow3, "row 1 should be farther from the back aisle than row 3");
+});
+
+test("the trio and the far pair are on opposite sides of the same walkway", () => {
+  // Going from a trio member to a far fixture still has to cross the back aisle,
+  // same as bench-to-far, but skips the "down to row 3" portion since the trio is
+  // already sitting right at that boundary.
+  assert.equal(routeDistanceFt("SHARPS", "SINK"), routeDistanceFt("B3", "SINK"));
 });
 
 test("routeWaypoints for a fixture ends at its own center and starts at a real point", () => {
-  const pts = routeWaypoints("A1", "SHARPS");
-  assert.deepEqual(pts[pts.length - 1], center("SHARPS"));
-  assert.equal(typeof pts[0].x, "number");
-  assert.equal(typeof pts[0].y, "number");
+  for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "CONSUM"]) {
+    const pts = routeWaypoints("A1", id);
+    assert.deepEqual(pts[pts.length - 1], center(id), `${id} path should end at its center`);
+    assert.equal(typeof pts[0].x, "number");
+    assert.equal(typeof pts[0].y, "number");
+  }
 });

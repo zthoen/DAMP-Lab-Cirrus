@@ -58,3 +58,32 @@ test("travelFt is the sum of the route distance (in feet) between consecutive st
     assert.equal(p.travelFt, Math.round(expected));
   }
 });
+
+test("protocols are titled 'Protocol 1', 'Protocol 2', ...", () => {
+  const { equipToStations } = table();
+  const { protocols } = generateProtocols(equipToStations, { count: 4, minSteps: 3, maxSteps: 5, seed: 5 });
+  protocols.forEach((p, i) => assert.equal(p.id, `Protocol ${i + 1}`));
+});
+
+test("a table with no equipment at the fixtures adds no extra protocol beyond count", () => {
+  const { equipToStations } = table(); // none of these map to SHARPS/RECYCLE/WASTE/SINK/CONSUM
+  const { protocols } = generateProtocols(equipToStations, { count: 5, minSteps: 3, maxSteps: 5, seed: 9 });
+  assert.equal(protocols.length, 5);
+});
+
+test("every fixture with mapped equipment is visited by at least one protocol", () => {
+  const fixtureTable = parseLabTable(`
+Used Pipette Tips\tSharps Disposal\tSHARPS
+Paper Waste\tRecycling\tRECYCLE
+Autoclave Bags\tBiohazard Disposal\tWASTE
+Glassware\tWash Station\tSINK
+Pipette Tips Restock\tConsumables\tCONSUM
+`.trim());
+  const { protocols } = generateProtocols(fixtureTable.equipToStations, { count: 2, minSteps: 2, maxSteps: 2, seed: 1 });
+  const visited = new Set(protocols.flatMap((p) => p.steps.map((s) => s.station)));
+  for (const fixture of ["SHARPS", "RECYCLE", "WASTE", "SINK", "CONSUM"]) {
+    assert.ok(visited.has(fixture), `${fixture} was never visited`);
+  }
+  // The coverage protocol (if any) still follows the naming scheme.
+  protocols.forEach((p, i) => assert.equal(p.id, `Protocol ${i + 1}`));
+});

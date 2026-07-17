@@ -40,36 +40,57 @@ a bench's edge that actually opens onto its walkway (used by both the distance a
 pixel-path functions below, never a bench's raw center).
 
 Distance is modeled on real measurements, not pixels: `BENCH_LEN_FT` (~7ft, the
-vertical hop between rows within a walkway), `WALKWAY_WIDTH_FT` (~6ft, the lateral
-crossing when two columns share one walkway), `BACK_AISLE_FT` (~5ft, the back
-walkway's one-time crossing when two stations are on different walkways).
-`routeDistanceFt(a, b)` picks one of two shapes: same walkway (same column, or the
-two columns of a pair) is just vertical bench-hops plus at most one walkway-width
-crossing; different walkways pay to descend/ascend each side's walkway and cross the
-back aisle in between. `BENCH_DIST_FT` precomputes this for every station pair (so
+vertical hop between rows within a walkway), `BENCH_WIDTH_FT` (~3ft, the lateral
+space one column takes up — used for every column-to-column distance), `WALKWAY_
+WIDTH_FT` (~6ft, the lateral crossing when two columns share one walkway),
+`BACK_AISLE_FT` (~5ft, the back walkway's one-time crossing when two stations are on
+different walkways). `routeDistanceFt(a, b)` picks one of two shapes: same walkway
+(same column, or the two columns of a pair) is just vertical bench-hops plus at most
+one walkway-width crossing; different walkways pay to descend/ascend each side's
+walkway and cross the back aisle in between (the lateral portion of that crossing is
+counted in bench-*widths*, not bench-lengths — you're passing the side of each
+column, not its depth). `BENCH_DIST_FT` precomputes this for every station pair (so
 the protocol generator doesn't recompute a route per draw) and `routeWaypoints(a, b)`
 returns the matching pixel path — front of the start bench, through the middle of
 whatever walkway(s) it uses, to the front and then the center of the destination —
 so the map's path overlay always reads as "walk to the aisle, use it, arrive," never
 a line cutting through a bench.
 
-**Fixed utility fixtures (`src/data.js` `FIXTURES`)** — 5 baseline destinations
-beyond the back wall that never move and are otherwise treated exactly like a bench:
-the sharps bin (end of column B), a recycling bin (between it and the biohazard box),
-the biohazard box (end of column C), then the sink and consumables storage
-continuing the same wall run. Real footprints (feet) are kept as *length* (the
-top-to-bottom extent, facing the wall) × *width* (the left-to-right extent) and
-scaled up for map legibility — a 1-2ft bin would otherwise round to an unreadable
-box. Every
-fixture is a full member of `STATION_IDS`, so it's a valid `Station Location` in a
-pasted table and participates in `BENCH_DIST_FT`/`routeWaypoints` like any bench.
-Reaching one always costs one back-walkway crossing (`isFixtureId` branches
-`routeDistanceFt`/`routeWaypoints` accordingly) since fixtures sit strictly beyond
-that walkway, never on the near side with the benches; two fixtures are both already
-past it, so moving between them is pure lateral distance along the wall. Because a
-fixture is a couple of feet wide, it can't hold an ID or name inside its own box the
-way a bench does — `LabMap.jsx` prints its code above the box instead and leaves the
-full name to the hover panel.
+**Fixed utility fixtures (`src/data.js` `FIXTURES`)** — 5 baseline destinations that
+never move and are otherwise treated exactly like a bench, split across the back
+walkway into two groups. The **trio** (sharps bin, recycling bin, biohazard box)
+sits touching the bottom of row 3 — the sharps bin at the end of column B, the
+biohazard box at the end of column C, recycling between them — with *no* gap, like
+a 4th row with nothing beyond it. The **far pair** (sink, consumables storage) sits
+on the opposite side of the back walkway, directly across from the trio. Real
+footprints (feet) are kept as *length* (the top-to-bottom extent, facing the wall) ×
+*width* (the left-to-right extent) and scaled up for map legibility — a 1-2ft bin
+would otherwise round to an unreadable box.
+
+Every fixture is a full member of `STATION_IDS`, so it's a valid `Station Location`
+in a pasted table and participates in `BENCH_DIST_FT`/`routeWaypoints` like any
+bench. Distance-wise, the trio is *aliased* to its anchor column's row-3 bench —
+`routeDistanceFt("B3", "SHARPS")` is 0, `routeDistanceFt("B1", "SHARPS")` is exactly
+`routeDistanceFt("B1", "B3")` — recycling straddles both B and C, so it resolves to
+whichever is closer (`NEAR_FIXTURES` lists each trio member's anchor column(s); the
+alias resolution is the first branch of `routeDistanceFt`). The far pair works like
+the fixtures in earlier iterations of this map: reaching one from a bench always
+costs one back-walkway crossing, and two far fixtures are pure lateral distance
+apart (`FAR_FEETX`). A trio member reaching a far fixture (or vice versa) still
+crosses the back walkway once, same as any bench would.
+
+Because a fixture is only a couple of feet across, it can't hold an ID or name
+inside its own box the way a bench does — `LabMap.jsx` prints its code outside the
+box instead (below for the trio, since it touches row 3 with no room above; above
+for the far pair, which has headroom) and leaves the full name to the hover panel.
+`isNearFixture`/`isFixtureId` (exported from `data.js`) are what `LabMap.jsx` uses
+to decide label placement and, for routing, to reuse the same "fixture-involving
+paths go via the back-walkway rail" pixel logic for both groups.
+
+The 4 vertical walkways and the back walkway render as **one continuous shaded
+region** (`WALKWAY_PATH`, a single comb-shaped SVG path) rather than 5 separate
+boxes — the vertical lanes are extended down to meet the back walkway with no gap,
+so there's no seam where they join.
 
 **Table parsing (`src/labTable.js`)** — `parseLabTable(raw)` takes a pasted
 spreadsheet table (tab-separated; falls back to comma-separated, though the comma
@@ -100,7 +121,15 @@ step's type (Read or Write) is deterministic, not random — `classifyStepType`
 `mulberry32` seeded stream (`src/rng.js`) so the same inputs always reproduce the
 same protocols. Each generated protocol carries its step list plus `stationsVisited`
 and `travelFt` (summed `BENCH_DIST_FT` across the sequence, in feet) so "does this
-actually force movement" is directly visible.
+actually force movement" is directly visible. Protocols are titled `Protocol 1`,
+`Protocol 2`, etc. in generation order.
+
+A random walk over a large equipment pool can easily miss a specific station across
+a small batch, so after the normal draw, `generateProtocols` checks whether every
+one of the 5 fixtures that has equipment mapped to it was actually visited by some
+step; if any weren't, one extra "coverage" protocol is appended that walks to each
+missed fixture in turn (using whatever equipment maps there), so a demo run reliably
+shows the fixtures being used even at low `count`/`minSteps`.
 
 **UI (`src/`)** — two tabs driven by `App.jsx`, sharing one parsed `labData`
 (`parseLabTable` over the raw pasted text, memoized in `App.jsx`):
@@ -139,7 +168,7 @@ actually force movement" is directly visible.
   `STATION_IDS` list. If the grid ever needs to grow (more rows/columns, storage
   aisles back in scope) or a fixture's dimensions/position change, it lives entirely
   in `data.js` — nothing else hardcodes bench or fixture positions. If the physical
-  reference measurements change, they're the three `*_FT` constants at the top of
+  reference measurements change, they're the `*_FT` constants at the top of
   `data.js` — `routeDistanceFt`/`routeWaypoints` derive everything else from them, so
   nothing else needs updating.
 - The Read/Write keyword list in `stepType.js` is a heuristic, not a lookup table —

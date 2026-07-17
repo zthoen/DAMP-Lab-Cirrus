@@ -1,4 +1,4 @@
-export const VIEW_W = 800, VIEW_H = 360;
+export const VIEW_W = 800, VIEW_H = 355;
 
 // Palette keyed off the DAMP Lab logo (coral/pink, slate blue-gray, charcoal).
 export const C = {

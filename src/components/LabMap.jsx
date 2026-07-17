@@ -1,6 +1,6 @@
 import React from "react";
 import { VIEW_W, VIEW_H, C, MONO, wrapLabel } from "../constants.js";
-import { SLOTS, FIXTURES, STATION_IDS, center, routeWaypoints, WALKWAYS, BACK_AISLE_Y, BACK_AISLE_H, BENCH_LEN_FT, WALKWAY_WIDTH_FT, BACK_AISLE_FT } from "../data.js";
+import { SLOTS, FIXTURES, STATION_IDS, center, routeWaypoints, WALKWAY_PATH, isNearFixture, BENCH_LEN_FT, WALKWAY_WIDTH_FT, BACK_AISLE_FT } from "../data.js";
 
 const displayNames = (id, stationNames) => (FIXTURES[id] ? [FIXTURES[id].name] : stationNames[id] || []);
 
@@ -37,15 +37,19 @@ export default function LabMap({ stationEquip, stationNames, hoverSlot, setHover
   };
 
   // Fixtures are far too small (a couple of feet) to hold their ID or name inside
-  // the box the way a bench does — the code goes above it instead, and the full
-  // name/equipment list lives in the hover panel.
+  // the box the way a bench does — the code goes outside it instead, and the full
+  // name/equipment list lives in the hover panel. The sharps/recycling/biohazard
+  // trio touches row 3 with no gap, so its label goes below (there's no room
+  // above without colliding with the bench's own "N eq" text); the sink/
+  // consumables pair has headroom above it instead.
   const fixtureBox = (id, r) => {
     const equip = stationEquip[id] || [];
     const isHov = hoverSlot === id;
     const fill = equip.length === 0 ? C.slot : "#1d3a3a";
+    const labelY = isNearFixture(id) ? r.y + r.h + 10 : r.y - 6;
     return (
       <g key={id} onMouseEnter={() => setHoverSlot(id)}>
-        <text x={r.x + r.w / 2} y={r.y - 6} textAnchor="middle" fontFamily={MONO} fontSize={8} fontWeight={700} fill="#88a0b6">{id}</text>
+        <text x={r.x + r.w / 2} y={labelY} textAnchor="middle" fontFamily={MONO} fontSize={8} fontWeight={700} fill="#88a0b6">{id}</text>
         <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={fill} stroke={isHov ? C.teal : C.slotLine} strokeWidth={isHov ? 2 : 1.2} />
       </g>
     );
@@ -55,14 +59,11 @@ export default function LabMap({ stationEquip, stationNames, hoverSlot, setHover
     <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, position: "relative" }}>
       <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} style={{ width: "100%", display: "block" }} onMouseLeave={() => setHoverSlot(null)}>
         <rect x={0} y={0} width={VIEW_W} height={VIEW_H} rx={10} fill={C.floor} />
-        {/* Walkways are drawn as open lanes, unlabeled — the floor plan should read as
-            "clear space you can walk" without spelling out what each one is. A faint
-            fill (not just the dashed outline) keeps them visually distinct from the
-            fixtures sitting just beyond the back one. */}
-        {WALKWAYS.map((w, i) => (
-          <rect key={"wk" + i} x={w.x} y={w.y} width={w.width} height={w.height} fill="#ffffff08" stroke={C.slotLine} strokeDasharray="3 5" opacity={0.6} />
-        ))}
-        <rect x={20} y={BACK_AISLE_Y - BACK_AISLE_H / 2} width={VIEW_W - 40} height={BACK_AISLE_H} rx={4} fill="#ffffff08" stroke={C.slotLine} strokeDasharray="3 5" opacity={0.6} />
+        {/* Walkways are drawn as one continuous open lane, unlabeled — the floor plan
+            should read as "clear space you can walk" without spelling out what each
+            part is, and without seams between the vertical lanes and the back aisle
+            they all feed into. */}
+        <path d={WALKWAY_PATH} fill="#ffffff0d" stroke={C.slotLine} strokeDasharray="3 5" opacity={0.7} />
 
         {Object.entries(SLOTS).map(([id, r]) => benchBox(id, r))}
         {Object.entries(FIXTURES).map(([id, r]) => fixtureBox(id, r))}
