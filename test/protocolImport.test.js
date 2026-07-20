@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { parseProtocol } from "../src/protocolImport.js";
 import { parseLabTable } from "../src/labTable.js";
-import { BENCH_DIST_FT } from "../src/data.js";
+import { BENCH_DIST_FT, PIPETTE_STATIONS } from "../src/data.js";
 
 const equipToStations = () => parseLabTable(`
 Opentrons Flex Robot\tHamilton
@@ -148,4 +148,37 @@ Step\tSubstep\tEquipment
 `.trim();
   const { errors } = parseProtocol(raw, equipToStations());
   assert.match(errors[0], /^Row 4:/);
+});
+
+test("a step whose equipment is 'Pipette' resolves from the fixed pool, not the pasted equipment list", () => {
+  const raw = `1. Aliquot\t1.1\tPipette`.trim();
+  const { steps, errors } = parseProtocol(raw, {}); // no equipment loaded at all
+  assert.equal(errors.length, 0);
+  assert.ok(PIPETTE_STATIONS.includes(steps[0].substeps[0].station));
+});
+
+test("'Pipette' matching is case-insensitive and exact — a similarly-named real equipment isn't swept in", () => {
+  const raw = `
+1. Aliquot\t1.1\tPIPETTE
+\t1.2\tpipette
+`.trim();
+  const { steps } = parseProtocol(raw, {});
+  assert.ok(PIPETTE_STATIONS.includes(steps[0].substeps[0].station));
+  assert.ok(PIPETTE_STATIONS.includes(steps[0].substeps[1].station));
+
+  const namedEquip = parseLabTable("Pipette Tips Restock\tPCR").equipToStations;
+  const raw2 = `1. Aliquot\t1.1\tPipette Tips Restock`.trim();
+  const { steps: steps2, errors: errors2 } = parseProtocol(raw2, namedEquip);
+  assert.equal(errors2.length, 0);
+  assert.equal(steps2[0].substeps[0].station, "D3"); // PCR, from the pasted list, not the pool
+});
+
+test("a 'Pipette' step resolves to whichever pool station is nearest the previous one", () => {
+  const raw = `
+1. Prep\t1.1\tOpentrons Flex Robot
+\t1.2\tPipette
+`.trim();
+  const { steps } = parseProtocol(raw, equipToStations());
+  const fromA3 = PIPETTE_STATIONS.reduce((best, s) => (BENCH_DIST_FT.A3[s] < BENCH_DIST_FT.A3[best] ? s : best), PIPETTE_STATIONS[0]);
+  assert.equal(steps[0].substeps[1].station, fromA3);
 });

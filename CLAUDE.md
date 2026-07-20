@@ -228,6 +228,16 @@ the far one. That "previous station" tracking runs across the *whole* protocol,
 not reset per step, so the plotted route is one continuous walk even across step
 boundaries.
 
+One exception to "only equipment the pasted list explicitly maps ever gets a
+station" (see the fixtures discussion above): a substep whose Equipment cell
+reads exactly `"Pipette"` (case-insensitive, not a substring match — "Pipette
+Tips Restock" still goes through the normal `equipToStations` lookup) is
+resolved against `PIPETTE_STATIONS` (`data.js`), a hardcoded pool of 8 station
+names with pipettes and bench space, via the same nearest-to-`lastStation`
+logic — a pipette isn't one specific piece of equipment tied to one bench, so
+it's never reported as missing from the equipment list the way a real
+instrument name would be.
+
 Returns `name` (the protocol's title, or `null` if the paste didn't have one),
 `steps` (ascending by number, each with its own `substeps`, `path` — the
 station-only, null-filtered list for that step's own route — `stationsVisited`,

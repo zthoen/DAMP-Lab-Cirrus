@@ -1,5 +1,10 @@
-import { BENCH_DIST_FT } from "./data.js";
+import { BENCH_DIST_FT, PIPETTE_STATIONS } from "./data.js";
 import { classifyStepType } from "./stepType.js";
+
+// A step whose Equipment cell literally reads "Pipette" doesn't name a
+// specific piece of equipment — it's resolved against PIPETTE_STATIONS (any
+// bench with pipettes and bench space) instead of the pasted equipment list.
+const PIPETTE_LABEL = /^pipette$/i;
 
 const splitRow = (line) => (line.includes("\t") ? line.split("\t") : line.split(","))
   .map((c) => c.trim());
@@ -46,7 +51,11 @@ const HEADER_WORD = /^step$/i;
    still kept (for the formatted view) but has no station and doesn't contribute
    to any path. When equipment lives at more than one station, the nearest one to
    the previous substep's station is used, so the plotted route stays a single
-   continuous walk across the *whole* protocol, not just within one step.
+   continuous walk across the *whole* protocol, not just within one step. A step
+   whose Equipment cell reads exactly "Pipette" is the one exception to "only
+   equipment the pasted list explicitly maps" — it's resolved against the fixed
+   `PIPETTE_STATIONS` pool (data.js) the same nearest-station way, since a pipette
+   isn't one specific piece of equipment tied to one bench.
 
    Returns `name` (the protocol's title, or null if the paste didn't have one),
    `steps` (one entry per step number, in ascending order, each with its own
@@ -90,12 +99,17 @@ export function parseProtocol(raw, equipToStations = {}) {
     if (!subMatch) { errors.push(`Row ${lineNo}: "${substepCell}" is not a valid step.substep label`); return; }
     if (!equipment) { errors.push(`Row ${lineNo}: missing equipment`); return; }
 
-    const canonical = equipLookup[equipment.toLowerCase()];
-    const stations = canonical ? equipToStations[canonical] : null;
-    if (!stations || stations.length === 0) {
-      errors.push(`Row ${lineNo}: "${equipment}" isn't in the loaded equipment list`);
+    let station;
+    if (PIPETTE_LABEL.test(equipment)) {
+      station = nearestStation(PIPETTE_STATIONS, lastStation);
+    } else {
+      const canonical = equipLookup[equipment.toLowerCase()];
+      const stations = canonical ? equipToStations[canonical] : null;
+      if (!stations || stations.length === 0) {
+        errors.push(`Row ${lineNo}: "${equipment}" isn't in the loaded equipment list`);
+      }
+      station = stations && stations.length ? nearestStation(stations, lastStation) : null;
     }
-    const station = stations && stations.length ? nearestStation(stations, lastStation) : null;
     if (station) lastStation = station;
 
     const stepNumber = Number(subMatch[1]);

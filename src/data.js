@@ -209,6 +209,17 @@ for (const [id, f] of Object.entries(FIXTURES)) STATION_NAME[id] = f.name;
 export const NAME_TO_STATION_ID = {};
 for (const [id, name] of Object.entries(STATION_NAME)) NAME_TO_STATION_ID[name.toLowerCase()] = id;
 
+// A pipette isn't tied to one station the way a piece of equipment is — any
+// bench with pipettes and bench space works. `protocolImport.js` resolves a
+// step whose Equipment cell literally reads "Pipette" to whichever of these
+// is nearest, instead of requiring it in the pasted equipment list like
+// everything else has to be.
+const PIPETTE_STATION_NAMES = [
+  "Dry Chemical Prep", "Automation Prep 2", "NanoDrop", "Gel Imaging",
+  "Research", "Transfyr", "DNA/RNA Prep", "Microbial Culture Prep",
+];
+export const PIPETTE_STATIONS = PIPETTE_STATION_NAMES.map((n) => NAME_TO_STATION_ID[n.toLowerCase()]);
+
 const rowOf = (id) => Number(id[1]);
 
 function benchToBenchFt(aId, bId) {
