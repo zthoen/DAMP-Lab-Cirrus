@@ -27,6 +27,7 @@ export default function LabOptimizerTab({ labData }) {
   const [texts, setTexts] = useState(loadStoredTexts);
   const [seed, setSeed] = useState(1234);
   const [result, setResult] = useState(null);
+  const [isOptimizing, setIsOptimizing] = useState(false);
   const [hoverBefore, setHoverBefore] = useState(null);
   const [hoverAfter, setHoverAfter] = useState(null);
 
@@ -44,14 +45,25 @@ export default function LabOptimizerTab({ labData }) {
 
   const equipCount = Object.keys(labData.equipToStations).length;
   const pastedCount = texts.filter((t) => t.trim()).length;
-  const optimize = () => setResult(optimizeLayout(labData.equipToStations, texts, { seed }));
+  // An exact search can take a second or two on a large relevant-station
+  // count — deferring the actual work a tick lets the button repaint to
+  // "Optimizing…" first, instead of just looking unresponsive until it's done.
+  const optimize = () => {
+    setIsOptimizing(true);
+    setTimeout(() => {
+      setResult(optimizeLayout(labData.equipToStations, texts, { seed }));
+      setIsOptimizing(false);
+    }, 0);
+  };
 
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 14 }}>
         <NumField label="protocols" value={count} min={1} max={20} onChange={setCount} width={54} />
         <NumField label="seed" value={seed} min={0} max={999999} onChange={setSeed} width={80} />
-        <button className="lbtn primary" disabled={equipCount === 0 || pastedCount === 0} onClick={optimize}>Optimize</button>
+        <button className="lbtn primary" disabled={equipCount === 0 || pastedCount === 0 || isOptimizing} onClick={optimize}>
+          {isOptimizing ? "Optimizing…" : "Optimize"}
+        </button>
         {equipCount === 0 && <span style={{ fontSize: 11.5, color: C.amber }}>Load equipment on the Equipment Input tab first.</span>}
         {equipCount > 0 && pastedCount === 0 && <span style={{ fontSize: 11.5, color: C.amber }}>Paste at least one protocol below.</span>}
       </div>
@@ -61,9 +73,10 @@ export default function LabOptimizerTab({ labData }) {
         rearranges which named station sits at which bench to minimize total distance walked across all of them —
         it only ever proposes a rearrangement of the fixed A1-H3 grid: the Sink, Glassware, Consumables 1/2, and
         the 4C Refrigerator never move, and the sharps/recycling/biohazard group can only relocate together, as a
-        block, to the base of another pair of touching columns. It's a best-effort search (24! layouts is too many
-        to try exhaustively), so the result is the best one found, not a guaranteed global optimum — and it never
-        recommends anything worse than the current layout.
+        block, to the base of another pair of touching columns. Only the stations these protocols actually use can
+        change anything, so the search only ever considers those — when there are few enough of them, it checks
+        every possible arrangement and finds the true, provably best layout; only when there are too many does it
+        fall back to a best-effort search. Either way, it never recommends anything worse than the current layout.
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(2, count)}, 1fr)`, gap: 12, marginBottom: 16 }}>
@@ -90,6 +103,7 @@ export default function LabOptimizerTab({ labData }) {
 
       {result && result.baseline && (
         <>
+          <OptimalityBanner result={result} />
           <SummaryRow result={result} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 14 }}>
             <div>
@@ -118,6 +132,24 @@ export default function LabOptimizerTab({ labData }) {
           <MovesList result={result} />
         </>
       )}
+    </div>
+  );
+}
+
+function OptimalityBanner({ result }) {
+  const n = result.relevantStationCount;
+  return (
+    <div style={{
+      marginBottom: 12, fontSize: 12, padding: "8px 12px", borderRadius: 8,
+      color: result.optimal ? C.green : C.amber,
+      background: result.optimal ? "#1a2e1e" : "#2e2610",
+      border: `1px solid ${result.optimal ? C.green : C.amber}`,
+    }}>
+      {result.optimal
+        ? (n === 0
+          ? "These protocols never touch a movable bench, so the current layout is already optimal — nothing to rearrange."
+          : `Provably optimal: every possible arrangement of the ${n} station${n === 1 ? "" : "s"} these protocols use was checked, and this is the best one.`)
+        : `Best-effort result: these protocols reference ${n} stations — too many to exhaustively check every arrangement, so this is the best layout the search found, not a guaranteed global optimum.`}
     </div>
   );
 }
