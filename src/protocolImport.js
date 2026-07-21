@@ -1,5 +1,6 @@
 import { BENCH_DIST_FT, PIPETTE_STATIONS } from "./data.js";
 import { classifyStepType } from "./stepType.js";
+import { splitRow } from "./pastedTable.js";
 
 // A step whose Equipment cell literally reads "Pipette" doesn't name a
 // specific piece of equipment — it's resolved against PIPETTE_STATIONS (any
@@ -7,9 +8,6 @@ import { classifyStepType } from "./stepType.js";
 // Exported so the Lab Optimizer can recognize the same substeps while
 // pre-parsing a protocol, without duplicating this pattern.
 export const PIPETTE_LABEL = /^pipette$/i;
-
-const splitRow = (line) => (line.includes("\t") ? line.split("\t") : line.split(","))
-  .map((c) => c.trim());
 
 // A Step cell reads "N. Name" (e.g. "1. Prepare Reagents") and only appears on
 // the first row of that step's block — every later substep row leaves it blank,

@@ -1,4 +1,4 @@
-import { mulberry32 } from "./rng.js";
+import { mulberry32, randInt } from "./rng.js";
 import { parseProtocol, PIPETTE_LABEL } from "./protocolImport.js";
 import {
   BENCH_NAMES, STATION_NAME, FIXTURES, isFixtureId,
@@ -8,8 +8,6 @@ import {
 
 const ALL_BENCH_NAMES = Object.values(BENCH_NAMES);
 const ALL_BENCH_IDS = Object.keys(BENCH_NAMES);
-
-const randInt = (rng, min, max) => min + Math.floor(rng() * (max - min + 1));
 
 // How many arrangements x steps the exact search is willing to fully
 // enumerate for a single anchor before falling back to the heuristic search.

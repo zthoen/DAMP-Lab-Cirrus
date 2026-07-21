@@ -10,3 +10,7 @@ export function mulberry32(seed) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+// A uniform random integer in [min, max] (inclusive), drawn from a `rng()`
+// stream in [0, 1) such as one returned by mulberry32 above.
+export const randInt = (rng, min, max) => min + Math.floor(rng() * (max - min + 1));

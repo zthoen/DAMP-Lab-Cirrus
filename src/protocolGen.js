@@ -1,8 +1,7 @@
-import { mulberry32 } from "./rng.js";
+import { mulberry32, randInt } from "./rng.js";
 import { BENCH_DIST_FT, STATION_IDS, isFixtureId, PIPETTE_STATIONS } from "./data.js";
 import { classifyStepType } from "./stepType.js";
 
-const randInt = (rng, min, max) => min + Math.floor(rng() * (max - min + 1));
 const pick = (rng, arr) => arr[Math.floor(rng() * arr.length)];
 const FIXTURE_IDS = STATION_IDS.filter(isFixtureId);
 

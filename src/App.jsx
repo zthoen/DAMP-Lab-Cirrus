@@ -1,6 +1,7 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import { C, MONO } from "./constants.js";
 import { parseLabTable } from "./labTable.js";
+import { usePersistedState } from "./usePersistedState.js";
 import LabBuilderTab from "./components/LabBuilderTab.jsx";
 import ProtocolGeneratorTab from "./components/ProtocolGeneratorTab.jsx";
 import ProtocolImportTab from "./components/ProtocolImportTab.jsx";
@@ -14,22 +15,16 @@ const TAB_BLURB = {
 };
 
 // The last pasted equipment list is remembered across reloads — booting the
-// app re-loads it automatically, and pasting a new one overwrites it (see the
-// persisting effect below). Read failures (private browsing, storage disabled)
-// just fall back to a blank table instead of crashing the app.
+// app re-loads it automatically, and pasting a new one overwrites it. This is
+// deliberately `localStorage` (survives indefinitely, across browser
+// restarts), unlike the session-scoped pastes elsewhere in the app — see
+// usePersistedState.js.
 const STORAGE_KEY = "damp-lab-raw-table";
-const loadStoredTable = () => {
-  try { return localStorage.getItem(STORAGE_KEY) ?? ""; } catch { return ""; }
-};
 
 export default function LabWorkflowApp() {
-  const [rawTable, setRawTable] = useState(loadStoredTable);
+  const [rawTable, setRawTable] = usePersistedState(localStorage, STORAGE_KEY, "");
   const [tab, setTab] = useState("builder");
   const labData = useMemo(() => parseLabTable(rawTable), [rawTable]);
-
-  useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, rawTable); } catch { /* storage unavailable — nothing to persist to */ }
-  }, [rawTable]);
 
   const tabBtn = (id, label) => (
     <button onClick={() => setTab(id)} style={{

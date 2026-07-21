@@ -138,10 +138,15 @@ so there's no seam where they join. The back walkway itself (`BACK_AISLE`) is wi
 enough to reach past the refrigerator, so it reads as sitting on an extension of
 the same walkway rather than floating past an unmarked gap.
 
-**Table parsing (`src/labTable.js`)** — `parseLabTable(raw)` takes a pasted
-spreadsheet table (tab-separated; falls back to comma-separated, though the comma
-fallback can't disambiguate a multi-station cell from the row delimiter — tab-
-separated paste is the reliable path) with columns `[Equipment, Station Name]`.
+**Table parsing (`src/labTable.js`, `src/protocolImport.js`)** — both parsers paste
+a spreadsheet table (tab-separated; falls back to comma-separated) and share one
+line-splitting primitive, `splitRow` (`src/pastedTable.js`), so the two can't drift
+out of sync on that basic tokenizing rule.
+
+`parseLabTable(raw)` takes a pasted table (tab-separated; falls back to comma-
+separated, though the comma fallback can't disambiguate a multi-station cell from
+the row delimiter — tab-separated paste is the reliable path) with columns
+`[Equipment, Station Name]`.
 The Station Name cell may list more than one station for the same equipment row,
 comma- or semicolon-separated (e.g. `GC-MS 1, GC-MS 2` — a shaker that lives at
 two stations) — every name is matched case-insensitively against `NAME_TO_
@@ -382,18 +387,27 @@ directly), `relevantStationCount` (how many of the 24 benches the search
 actually had to consider), and `warnings` (no equipment loaded / no protocols
 pasted, mirroring the other generators' graceful-degradation style).
 
+**Persisted paste state (`src/usePersistedState.js`)** — every "remember what was
+pasted here" field in the app (the equipment table, the Protocol Visualizer's
+paste, the Lab Optimizer's protocol textareas) is a `useState` that also reads
+from and writes back to a `Storage` object (`localStorage`/`sessionStorage`)
+under a fixed key, via the shared `usePersistedState(storage, key, defaultValue,
+{ serialize, deserialize })` hook — every storage error (private browsing,
+disabled storage, unexpected stored shape) is swallowed the same way: fall back
+to `defaultValue` on read, silently skip persisting on write. `serialize`/
+`deserialize` default to identity for a plain pasted string; the Lab Optimizer's
+array of protocol texts is the one caller that passes `JSON.stringify`/a
+shape-validating parse instead (see `LabOptimizerTab.jsx` below).
+
 **UI (`src/`)** — four tabs driven by `App.jsx`, sharing one parsed `labData`
 (`parseLabTable` over the raw pasted text, memoized in `App.jsx`):
-- `App.jsx`: also owns the raw pasted equipment text's persistence — it's read
-  from `localStorage` (`damp-lab-raw-table` key) on boot via `loadStoredTable`, so
-  the last-used equipment list loads automatically, and a `useEffect` writes it
-  back on every change, so pasting a new table over it overwrites what's stored.
-  This is deliberately `localStorage` (survives indefinitely, across browser
-  restarts) since the equipment list is a standing fixture of the lab, unlike the
-  pasted protocol on the Protocol Visualizer tab (see `ProtocolImportTab.jsx`
-  below), which is intentionally session-scoped instead. Storage errors (private
-  browsing, disabled storage) are swallowed — the app just falls back to a blank
-  table rather than crashing.
+- `App.jsx`: also owns the raw pasted equipment text's persistence, via
+  `usePersistedState(localStorage, "damp-lab-raw-table", "")` — the last-used
+  equipment list loads automatically on boot, and pasting a new table overwrites
+  what's stored. This is deliberately `localStorage` (survives indefinitely,
+  across browser restarts) since the equipment list is a standing fixture of the
+  lab, unlike the pasted protocol on the Protocol Visualizer tab (see
+  `ProtocolImportTab.jsx` below), which is intentionally session-scoped instead.
 - `LabBuilderTab.jsx` (tab label "Equipment Input"): the paste textarea, row-error
   list, and the `LabMap.jsx` render of the resulting station/equipment layout.
 - `ProtocolGeneratorTab.jsx` (tab label "Protocol Generator"): controls for protocol count / min-max steps / seed, a
@@ -438,24 +452,25 @@ pasted, mirroring the other generators' graceful-degradation style).
   overstate how precise any of it is; one honest "5 ft" tick mark is what's here
   instead. Has no simulation state; it only knows what's in the parsed table.
 - `ProtocolImportTab.jsx` (tab label "Protocol Visualizer"): the paste textarea
-  for a real protocol, an error list, and a column of cards beside a `LabMap.jsx`
+  for a real protocol, an `ErrorList`, and a column of cards beside a `LabMap.jsx`
   — a summary card for the whole protocol (selected by default, titled from
   `parsed.name` — the protocol's own pasted name — falling back to "Full
-  Protocol" only if the paste didn't have one) plus one card per step, each with
-  its own substep table (station/equipment/Read-or-Write, mirroring
-  `ProtocolGeneratorTab`'s card layout and its Station-shows-the-name treatment);
-  an unresolved substep shows `?` in red instead of a name. Selecting a step highlights just that step's
-  own `path`; the summary card highlights `fullPath`, the whole route start to
-  finish. The pasted protocol text itself is persisted to `sessionStorage`
-  (`damp-lab-raw-protocol` key, read on mount / written on every change,
-  mirroring `App.jsx`'s equipment-list persistence) — deliberately
-  `sessionStorage`, not `localStorage`: it should survive a reload within the
-  same browser session but never resurface in a later one, unlike the equipment
-  list.
+  Protocol" only if the paste didn't have one) plus one card per step, each
+  rendering its substeps through the shared `StepTable` (see `Controls.jsx`
+  below) — an unresolved substep shows `?` in red instead of a name. Selecting a
+  step highlights just that step's own `path`; the summary card highlights
+  `fullPath`, the whole route start to finish. The pasted protocol text itself
+  is persisted via `usePersistedState(sessionStorage, "damp-lab-raw-protocol", "")`
+  — deliberately `sessionStorage`, not `localStorage`: it should survive a
+  reload within the same browser session but never resurface in a later one,
+  unlike the equipment list.
 - `LabOptimizerTab.jsx` (tab label "Lab Optimizer"): a `protocols` count field
   drives an array of textareas (one per protocol, same Step/Substep/Equipment
-  paste format as `ProtocolImportTab.jsx`, session-persisted the same way under
-  a different key) plus an "Optimize" button that calls `optimizeLayout`. The
+  paste format as `ProtocolImportTab.jsx`, persisted the same session-scoped way
+  under a different key — `usePersistedState(sessionStorage,
+  "damp-lab-optimizer-protocols", ["", ""], { serialize: JSON.stringify,
+  deserialize: ... })`, since this one field is a structured array rather than a
+  plain string) plus an "Optimize" button that calls `optimizeLayout`. The
   button defers that call a tick (`setTimeout(fn, 0)`, flipping an
   `isOptimizing` flag first) so it can repaint to "Optimizing…" before an
   exact search's worst-case second-or-two runs, rather than just looking
@@ -473,11 +488,20 @@ pasted, mirroring the other generators' graceful-degradation style).
   *reports* the suggested layout; it doesn't rewrite `data.js`'s hardcoded
   `BENCH_NAMES` or affect any other tab, consistent with every other tab here
   being a read-only analysis view over the real, fixed floor plan.
-- `Controls.jsx`: shared widgets carried over from the original sim UI — trimmed
-  down to just `NumField` (protocol count / min-max steps / seed inputs across
-  the generator tabs); every other original widget (`Dropdown`, `StatCard`,
-  `InfoDot`, `Slider`, `Toggle`, `Section`, `Panel`) went unused once this repo
-  was stripped down to its current scope and was removed.
+- `Controls.jsx`: shared widgets, some carried over from the original sim UI,
+  some pulled out of the tab components as duplication showed up between them —
+  `NumField` (protocol count / min-max steps / seed inputs across the generator
+  tabs), `ErrorList` (the "N issue(s) found" red-bordered box under a paste
+  textarea — Equipment Input and Protocol Visualizer both report per-row parse
+  errors the same way), and `StepTable` (the #/Station/Equipment/Type table
+  inside every per-step or per-protocol card — Protocol Generator's and Protocol
+  Visualizer's cards render the exact same shape of table over slightly
+  different data, via `rows: { index, stationId, equipment, action }[]`, where
+  `stationId` may be null/undefined for an equipment name that couldn't be
+  resolved to a station). Every other original widget from the sim UI
+  (`Dropdown`, `StatCard`, `InfoDot`, `Slider`, `Toggle`, `Section`, `Panel`)
+  went unused once this repo was stripped down to its current scope and was
+  removed.
 
 ## Working in this codebase
 
@@ -498,7 +522,8 @@ pasted, mirroring the other generators' graceful-degradation style).
   `DEFAULT_SEEDS` internally rather than taking one from the user, so the same
   table + protocols always produce the same result without anyone hand-tuning a
   seed. Keep any new randomness routed through `mulberry32` rather than
-  `Math.random()`.
+  `Math.random()`; `rng.js` also exports `randInt(rng, min, max)`, shared by
+  `protocolGen.js` and `labOptimizer.js` rather than each keeping its own copy.
 - The bench grid (`SLOTS` in `data.js`) is fixed at A1–H3, plus the 8 fixed fixtures
   in `FIXTURES`, and every one of those 32 stations has a fixed name in
   `BENCH_NAMES`/`STATION_NAME`; `labTable.js` validates pasted station names against

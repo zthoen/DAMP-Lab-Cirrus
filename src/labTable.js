@@ -1,10 +1,9 @@
 import { NAME_TO_STATION_ID } from "./data.js";
+import { splitRow } from "./pastedTable.js";
 
 const isValidStationName = (name) => Object.prototype.hasOwnProperty.call(NAME_TO_STATION_ID, name.toLowerCase());
 const HEADER_WORDS = /^(equipment|instrument|device)$/i;
 
-const splitRow = (line) => (line.includes("\t") ? line.split("\t") : line.split(","))
-  .map((c) => c.trim());
 // A single cell can list more than one station ("NanoDrop, PCR" or "NanoDrop; PCR"),
 // since one piece of equipment (an incubator shaker, a fridge, ...) commonly lives at
 // several stations at once.

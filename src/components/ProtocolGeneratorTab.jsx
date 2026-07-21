@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { C, MONO } from "../constants.js";
-import { STATION_NAME } from "../data.js";
-import { NumField } from "./Controls.jsx";
+import { NumField, StepTable } from "./Controls.jsx";
 import { generateProtocols } from "../protocolGen.js";
 import LabMap from "./LabMap.jsx";
 
@@ -64,7 +63,6 @@ export default function ProtocolGeneratorTab({ labData }) {
 }
 
 function ProtocolCard({ p, selected, onSelect }) {
-  const th = { textAlign: "left", padding: "3px 8px", color: C.muted, fontFamily: MONO, fontWeight: 700, fontSize: 9.5, textTransform: "uppercase", letterSpacing: .4, borderBottom: `1px solid ${C.border}` };
   return (
     <div onClick={onSelect} style={{ cursor: "pointer", background: C.panel, border: `1px solid ${selected ? C.teal : C.border}`, borderRadius: 10, overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 12px", background: C.panel2, borderBottom: `1px solid ${C.border}` }}>
@@ -72,19 +70,7 @@ function ProtocolCard({ p, selected, onSelect }) {
         <span style={{ fontSize: 11, color: C.muted, fontFamily: MONO }}>{p.steps.length} steps · {p.stationsVisited} benches · {p.travelFt}ft walked</span>
       </div>
       <div style={{ padding: "8px 12px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-          <thead><tr><th style={th}>#</th><th style={th}>Station</th><th style={th}>Equipment</th><th style={{ ...th, textAlign: "right" }}>Type</th></tr></thead>
-          <tbody>
-            {p.steps.map((s, i) => (
-              <tr key={i} style={{ borderTop: i ? `1px solid ${C.panel2}` : "none" }}>
-                <td style={{ padding: "4px 6px", color: C.muted, fontFamily: MONO }}>{i + 1}</td>
-                <td style={{ padding: "4px 6px", color: C.teal, fontWeight: 700, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={STATION_NAME[s.station]}>{STATION_NAME[s.station]}</td>
-                <td style={{ padding: "4px 6px", color: C.text, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={s.equipment}>{s.equipment}</td>
-                <td style={{ padding: "4px 6px", textAlign: "right", color: s.action === "Write" ? C.amber : C.blue, fontFamily: MONO, fontSize: 11 }}>{s.action}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <StepTable rows={p.steps.map((s, i) => ({ index: i + 1, stationId: s.station, equipment: s.equipment, action: s.action }))} />
       </div>
     </div>
   );

@@ -9,6 +9,14 @@ export const C = {
 };
 export const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
+// Shared header-cell style for every small step/move table across the app
+// (Protocol Generator's per-protocol cards, Protocol Visualizer's per-step
+// cards, the Lab Optimizer's moves table).
+export const TH_STYLE = {
+  textAlign: "left", padding: "3px 8px", color: C.muted, fontFamily: MONO, fontWeight: 700,
+  fontSize: 9.5, textTransform: "uppercase", letterSpacing: .4, borderBottom: `1px solid ${C.border}`,
+};
+
 export const wrapLabel = (t, max) => {
   const w = t.split(" "), l = [];
   let c = "";

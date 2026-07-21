@@ -1,8 +1,9 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import { C, MONO } from "../constants.js";
-import { STATION_NAME } from "../data.js";
 import { parseProtocol } from "../protocolImport.js";
+import { usePersistedState } from "../usePersistedState.js";
 import LabMap from "./LabMap.jsx";
+import { ErrorList, StepTable } from "./Controls.jsx";
 
 const PLACEHOLDER = `Overnight Culture Prep
 Step\tSubstep\tEquipment
@@ -17,14 +18,11 @@ const FULL_KEY = "__FULL__";
 // in sessionStorage, not localStorage, so it survives a reload/tab-switch
 // within the current session but never leaks into a future one (unlike the
 // equipment list on the Equipment Input tab, which is meant to persist
-// indefinitely). Storage errors just fall back to a blank textarea.
+// indefinitely).
 const SESSION_KEY = "damp-lab-raw-protocol";
-const loadStoredProtocol = () => {
-  try { return sessionStorage.getItem(SESSION_KEY) ?? ""; } catch { return ""; }
-};
 
 export default function ProtocolImportTab({ labData }) {
-  const [rawProtocol, setRawProtocol] = useState(loadStoredProtocol);
+  const [rawProtocol, setRawProtocol] = usePersistedState(sessionStorage, SESSION_KEY, "");
   const [selectedKey, setSelectedKey] = useState(FULL_KEY);
   const [hoverSlot, setHoverSlot] = useState(null);
 
@@ -32,10 +30,6 @@ export default function ProtocolImportTab({ labData }) {
   const selectedStep = selectedKey === FULL_KEY ? null : parsed.steps.find((s) => s.number === selectedKey) || null;
   const highlightPath = selectedKey === FULL_KEY ? parsed.fullPath : (selectedStep ? selectedStep.path : []);
   const fullLabel = parsed.name || "Full Protocol";
-
-  useEffect(() => {
-    try { sessionStorage.setItem(SESSION_KEY, rawProtocol); } catch { /* storage unavailable — nothing to persist to */ }
-  }, [rawProtocol]);
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "400px 1fr", gap: 16 }}>
@@ -57,14 +51,7 @@ export default function ProtocolImportTab({ labData }) {
             borderRadius: 8, padding: 10, fontFamily: MONO, fontSize: 12, resize: "vertical", boxSizing: "border-box",
           }}
         />
-        {parsed.errors.length > 0 && (
-          <div style={{ marginTop: 10, background: "#3a2431", border: `1px solid ${C.red}`, borderRadius: 8, padding: "8px 10px" }}>
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: C.red, marginBottom: 4 }}>{parsed.errors.length} issue(s) found</div>
-            <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11, color: C.text }}>
-              {parsed.errors.slice(0, 12).map((e, i) => <li key={i}>{e}</li>)}
-            </ul>
-          </div>
-        )}
+        <ErrorList errors={parsed.errors} />
         {parsed.steps.length > 0 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 14 }}>
             <FullProtocolCard
@@ -97,8 +84,6 @@ export default function ProtocolImportTab({ labData }) {
   );
 }
 
-const th = { textAlign: "left", padding: "3px 8px", color: C.muted, fontFamily: MONO, fontWeight: 700, fontSize: 9.5, textTransform: "uppercase", letterSpacing: .4, borderBottom: `1px solid ${C.border}` };
-
 function FullProtocolCard({ parsed, label, selected, onSelect }) {
   const substepCount = parsed.steps.reduce((n, s) => n + s.substeps.length, 0);
   return (
@@ -120,19 +105,7 @@ function StepCard({ s, selected, onSelect }) {
         <span style={{ fontSize: 11, color: C.muted, fontFamily: MONO, marginLeft: "auto" }}>{s.stationsVisited} benches · {s.travelFt}ft</span>
       </div>
       <div style={{ padding: "8px 12px" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-          <thead><tr><th style={th}>#</th><th style={th}>Station</th><th style={th}>Equipment</th><th style={{ ...th, textAlign: "right" }}>Type</th></tr></thead>
-          <tbody>
-            {s.substeps.map((sub, i) => (
-              <tr key={i} style={{ borderTop: i ? `1px solid ${C.panel2}` : "none" }}>
-                <td style={{ padding: "4px 6px", color: C.muted, fontFamily: MONO }}>{sub.label}</td>
-                <td style={{ padding: "4px 6px", color: sub.station ? C.teal : C.red, fontWeight: 700, maxWidth: 110, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={sub.station ? STATION_NAME[sub.station] : "unresolved"}>{sub.station ? STATION_NAME[sub.station] : "?"}</td>
-                <td style={{ padding: "4px 6px", color: C.text, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={sub.equipment}>{sub.equipment}</td>
-                <td style={{ padding: "4px 6px", textAlign: "right", color: sub.action === "Write" ? C.amber : C.blue, fontFamily: MONO, fontSize: 11 }}>{sub.action}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <StepTable rows={s.substeps.map((sub) => ({ index: sub.label, stationId: sub.station, equipment: sub.equipment, action: sub.action }))} />
       </div>
     </div>
   );

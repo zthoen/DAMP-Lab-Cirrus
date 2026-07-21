@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from "react";
-import { C, MONO } from "../constants.js";
+import React, { useState } from "react";
+import { C, MONO, TH_STYLE } from "../constants.js";
 import { NumField } from "./Controls.jsx";
 import { optimizeLayout } from "../labOptimizer.js";
+import { usePersistedState } from "../usePersistedState.js";
 import LabMap from "./LabMap.jsx";
 
 const PLACEHOLDER = `Overnight Culture Prep
@@ -13,18 +14,17 @@ Step\tSubstep\tEquipment
 // Protocol text is remembered only for this browser session (same reasoning as
 // the Protocol Visualizer's paste) — kept in sessionStorage, not localStorage.
 const SESSION_KEY = "damp-lab-optimizer-protocols";
-const loadStoredTexts = () => {
-  try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    const parsed = raw ? JSON.parse(raw) : null;
-    return Array.isArray(parsed) ? parsed : ["", ""];
-  } catch { return ["", ""]; }
+const deserializeTexts = (raw) => {
+  const parsed = JSON.parse(raw);
+  return Array.isArray(parsed) ? parsed : ["", ""];
 };
 
 const ANCHOR_LABEL = { BC: "the B-C columns (today's spot)", DE: "the D-E columns", FG: "the F-G columns" };
 
 export default function LabOptimizerTab({ labData }) {
-  const [texts, setTexts] = useState(loadStoredTexts);
+  const [texts, setTexts] = usePersistedState(sessionStorage, SESSION_KEY, ["", ""], {
+    serialize: JSON.stringify, deserialize: deserializeTexts,
+  });
   const [result, setResult] = useState(null);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [hoverBefore, setHoverBefore] = useState(null);
@@ -37,10 +37,6 @@ export default function LabOptimizerTab({ labData }) {
     return next;
   });
   const setTextAt = (i, value) => setTexts((prev) => prev.map((t, idx) => (idx === i ? value : t)));
-
-  useEffect(() => {
-    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(texts)); } catch { /* storage unavailable — nothing to persist to */ }
-  }, [texts]);
 
   const equipCount = Object.keys(labData.equipToStations).length;
   const pastedCount = texts.filter((t) => t.trim()).length;
@@ -179,7 +175,6 @@ function SummaryRow({ result }) {
 }
 
 function MovesList({ result }) {
-  const th = { textAlign: "left", padding: "3px 8px", color: C.muted, fontFamily: MONO, fontWeight: 700, fontSize: 9.5, textTransform: "uppercase", letterSpacing: .4, borderBottom: `1px solid ${C.border}` };
   if (result.moves.length === 0 && !result.anchorChanged) {
     return <div style={{ marginTop: 14, fontSize: 12, color: C.muted }}>The current layout already looks best for these protocols — no moves recommended.</div>;
   }
@@ -193,7 +188,7 @@ function MovesList({ result }) {
       )}
       {result.moves.length > 0 && (
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, maxWidth: 500 }}>
-          <thead><tr><th style={th}>Station</th><th style={th}>From</th><th style={th}>To</th></tr></thead>
+          <thead><tr><th style={TH_STYLE}>Station</th><th style={TH_STYLE}>From</th><th style={TH_STYLE}>To</th></tr></thead>
           <tbody>
             {result.moves.map((m) => (
               <tr key={m.name}>

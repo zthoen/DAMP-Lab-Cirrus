@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { C, MONO } from "../constants.js";
 import { STATION_IDS } from "../data.js";
 import LabMap from "./LabMap.jsx";
+import { ErrorList } from "./Controls.jsx";
 
 const PLACEHOLDER = `Equipment\tStation Name
 Opentrons Flex Robot\tAutomation Prep 1
@@ -38,14 +39,7 @@ export default function LabBuilderTab({ rawTable, setRawTable, labData }) {
           <span>{equipCount} equipment</span>
           <span>{Object.keys(labData.stationEquip).length}/{STATION_IDS.length} stations mapped</span>
         </div>
-        {labData.errors.length > 0 && (
-          <div style={{ marginTop: 10, background: "#3a2431", border: `1px solid ${C.red}`, borderRadius: 8, padding: "8px 10px" }}>
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: C.red, marginBottom: 4 }}>{labData.errors.length} issue(s) found</div>
-            <ul style={{ margin: 0, paddingLeft: 16, fontSize: 11, color: C.text }}>
-              {labData.errors.slice(0, 12).map((e, i) => <li key={i}>{e}</li>)}
-            </ul>
-          </div>
-        )}
+        <ErrorList errors={labData.errors} />
       </div>
       <LabMap stationEquip={labData.stationEquip} hoverSlot={hoverSlot} setHoverSlot={setHoverSlot} />
     </div>
