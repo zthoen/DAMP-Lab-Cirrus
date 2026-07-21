@@ -1,4 +1,4 @@
-# DAMP Lab Choreography Visualizer
+# DAMP Lab - Cirrus
 
 A browser-based tool for laying out a lab floor and reasoning about how much a
 technician has to walk to run a protocol on it. No backend, no database — a

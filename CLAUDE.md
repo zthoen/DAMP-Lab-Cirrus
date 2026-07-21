@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-DAMP Lab Choreography Visualizer — a browser-based tool that turns a pasted equipment/bench
+DAMP Lab - Cirrus — a browser-based tool that turns a pasted equipment/bench
 table into a visual lab floor map, generates fake protocols (variable-length step
 sequences) engineered to force a lab technician to keep moving between benches instead
 of camping at one station, can import a *real* protocol (pasted step/substep/

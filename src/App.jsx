@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from "react";
-import { C, MONO } from "./constants.js";
+import { C } from "./constants.js";
 import { parseLabTable } from "./labTable.js";
 import { usePersistedState } from "./usePersistedState.js";
 import LabBuilderTab from "./components/LabBuilderTab.jsx";
@@ -46,8 +46,7 @@ export default function LabWorkflowApp() {
         borderRadius: 10, border: `1px solid ${C.border}`,
         background: `linear-gradient(90deg, ${C.panel} 0%, ${C.panel2} 60%, ${C.panel} 100%)`,
       }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>DAMP Lab <span style={{ color: C.teal }}>Choreography Visualizer</span></div>
-        <div style={{ fontSize: 11, color: C.muted, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 20, padding: "2px 10px", fontFamily: MONO }}>lab map + fake protocol generator</div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>DAMP Lab - <span style={{ color: C.teal }}>Cirrus</span></div>
       </div>
       <div style={{ display: "flex", gap: 20, borderBottom: `1px solid ${C.border}`, marginBottom: 10 }}>
         {tabBtn("builder", "Equipment Input")}{tabBtn("protocols", "Protocol Generator")}{tabBtn("import", "Protocol Visualizer")}{tabBtn("optimizer", "Lab Optimizer")}
