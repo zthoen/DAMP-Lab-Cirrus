@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { optimizeLayout } from "../src/labOptimizer.js";
 import { parseLabTable } from "../src/labTable.js";
-import { BENCH_NAMES, TOUCHING_PAIRS } from "../src/data.js";
+import { BENCH_NAMES, TOUCHING_PAIRS, BENCH_DIST_FT, PIPETTE_STATION_NAMES } from "../src/data.js";
 
 const FAR_FIXTURE_NAMES = ["Sink", "Glassware", "Consumables 1", "Consumables 2", "4C Refrigerator"];
 
@@ -177,4 +177,137 @@ test("visitCounts tallies total resolved station visits across all pasted protoc
 test("visitCounts is empty (not present) for a station nothing ever visits", () => {
   const out = optimizeLayout(table(), [bounceProtocol()], { seed: 5 });
   assert.equal(out.best.visitCounts.REFRIGERATOR ?? 0, 0);
+});
+
+// --- Exactness: only the referenced stations matter, so the search should be
+// able to prove a true global optimum for small cases, verified here by an
+// independent brute force that doesn't call anything from labOptimizer.js. ---
+
+test("a 2-station scenario is flagged optimal, with relevantStationCount matching, and hits the true minimum", () => {
+  const twoTable = parseLabTable(`
+Equip A\tOpentrons
+Equip B\tNanoDrop
+`.trim()).equipToStations;
+  // 4 substeps alternating A/B -> 3 transitions, always between the same pair.
+  const proto = `
+1. Loop\t1.1\tEquip A
+\t1.2\tEquip B
+\t1.3\tEquip A
+\t1.4\tEquip B
+`.trim();
+
+  const out = optimizeLayout(twoTable, [proto], { seed: 123 });
+  assert.equal(out.optimal, true);
+  assert.equal(out.relevantStationCount, 2);
+
+  // The true minimum achievable: the smallest distance between any two
+  // *distinct* bench positions anywhere on the whole 24-bench grid.
+  const ids = Object.keys(BENCH_NAMES);
+  let minDist = Infinity;
+  for (const a of ids) for (const b of ids) if (a !== b) minDist = Math.min(minDist, BENCH_DIST_FT[a][b]);
+
+  assert.equal(out.best.totalTravelFt, 3 * minDist);
+});
+
+test("a 3-station scenario hits the exhaustively-verified true minimum", () => {
+  const threeTable = parseLabTable(`
+Equip A\tOpentrons
+Equip B\tNanoDrop
+Equip C\tPCR
+`.trim()).equipToStations;
+  const proto = `
+1. Loop\t1.1\tEquip A
+\t1.2\tEquip B
+\t1.3\tEquip C
+\t1.4\tEquip A
+\t1.5\tEquip B
+\t1.6\tEquip C
+`.trim();
+
+  const out = optimizeLayout(threeTable, [proto], { seed: 456 });
+  assert.equal(out.optimal, true);
+  assert.equal(out.relevantStationCount, 3);
+
+  // Exhaustively try every placement of 3 distinct benches (24*23*22 = 12,144
+  // arrangements) against the same A-B-C-A-B-C transition pattern, using only
+  // BENCH_DIST_FT directly — nothing from labOptimizer.js — as an independent
+  // reference for the true minimum.
+  const ids = Object.keys(BENCH_NAMES);
+  const transitions = [["A", "B"], ["B", "C"], ["C", "A"], ["A", "B"], ["B", "C"]];
+  let bestCost = Infinity;
+  for (const a of ids) {
+    for (const b of ids) {
+      if (b === a) continue;
+      for (const c of ids) {
+        if (c === a || c === b) continue;
+        const pos = { A: a, B: b, C: c };
+        let cost = 0;
+        for (const [x, y] of transitions) cost += BENCH_DIST_FT[pos[x]][pos[y]];
+        if (cost < bestCost) bestCost = cost;
+      }
+    }
+  }
+
+  assert.equal(out.best.totalTravelFt, bestCost);
+});
+
+test("exact results are identical across every seed (the search is deterministic when optimal)", () => {
+  const twoTable = parseLabTable(`
+Equip A\tOpentrons
+Equip B\tNanoDrop
+`.trim()).equipToStations;
+  const proto = "1. Loop\t1.1\tEquip A\n\t1.2\tEquip B\n\t1.3\tEquip A\n\t1.4\tEquip B";
+  const results = [1, 2, 3, 4, 5].map((seed) => optimizeLayout(twoTable, [proto], { seed }));
+  for (const r of results) assert.equal(r.optimal, true);
+  for (const r of results.slice(1)) assert.deepEqual(r, results[0]);
+});
+
+test("relevantStationCount is 0 and optimal is true when the protocol never references a movable bench", () => {
+  const fixtureOnlyTable = parseLabTable(`
+Glassware Cart\tGlassware
+Used Pipette Tips\tSharps Bin
+`.trim()).equipToStations;
+  const proto = "1. Cleanup\t1.1\tGlassware Cart\n\t1.2\tUsed Pipette Tips";
+  const out = optimizeLayout(fixtureOnlyTable, [proto], { seed: 1 });
+  assert.equal(out.relevantStationCount, 0);
+  assert.equal(out.optimal, true);
+  assert.equal(out.moves.length, 0);
+});
+
+test("a large relevant-station-count scenario (heavy Pipette usage) falls back to the heuristic search and still never regresses", () => {
+  // Pipette alone pulls in all 8 PIPETTE_STATION_NAMES; combined with several
+  // more single-station equipment, this pushes relevantStationCount past what
+  // exact search can budget for, exercising the heuristic fallback path.
+  const bigTable = parseLabTable(`
+Opentrons Flex Robot\tOpentrons
+Gel Doc\tGel Imaging
+Thermal Cycler\tPCR
+Centrifuge\tDNA Prep
+Microscope\tResearch
+Vortex Mixer\tImaging
+Incubator\tMicrobial Incubators
+Balance\tDry Chemical Weighing
+`.trim()).equipToStations;
+  const proto = `
+1. Loop\t1.1\tOpentrons Flex Robot
+\t1.2\tPipette
+\t1.3\tGel Doc
+\t1.4\tPipette
+\t1.5\tThermal Cycler
+\t1.6\tPipette
+\t1.7\tCentrifuge
+\t1.8\tPipette
+\t1.9\tMicroscope
+\t1.10\tPipette
+\t1.11\tVortex Mixer
+\t1.12\tPipette
+\t1.13\tIncubator
+\t1.14\tPipette
+\t1.15\tBalance
+`.trim();
+
+  const out = optimizeLayout(bigTable, [proto], { seed: 11 });
+  assert.equal(out.optimal, false);
+  assert.ok(out.relevantStationCount >= PIPETTE_STATION_NAMES.length);
+  assert.ok(out.best.totalTravelFt <= out.baseline.totalTravelFt);
 });
