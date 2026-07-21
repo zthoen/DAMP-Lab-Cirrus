@@ -7,12 +7,6 @@ export const C = {
   red: "#ff5c6c", blue: "#93b3b8", green: "#8be04e", floor: "#161616",
   slot: "#232323", slotLine: "#3a3a3a",
 };
-// Light companion palette for cards/tables that should read as "paper" against the
-// dark chrome.
-export const LC = {
-  bg: "#ffffff", panel: "#ffffff", panel2: "#f4f4f4", border: "#dcdcdc",
-  text: "#1a1a1a", muted: "#666666",
-};
 export const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
 
 export const wrapLabel = (t, max) => {

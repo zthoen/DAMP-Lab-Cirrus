@@ -95,8 +95,8 @@ export const trioFixturesForAnchor = (anchorKey) => trioBoxesFor(TOUCHING_PAIRS[
 // The back walkway starts right where the trio ends (so the trio sits flush
 // between row 3 above and the walkway below) and runs the full width of the
 // floor, connecting all 4 vertical walkways into one continuous strip.
-export const BACK_AISLE_Y = TRIO_TOP_Y + Math.max(sharpsBox.h, recycleBox.h, wasteBox.h) + 17;
-export const BACK_AISLE_H = 34;
+const BACK_AISLE_Y = TRIO_TOP_Y + Math.max(sharpsBox.h, recycleBox.h, wasteBox.h) + 17;
+const BACK_AISLE_H = 34;
 const BACK_AISLE_TOP = BACK_AISLE_Y - BACK_AISLE_H / 2;
 const BACK_AISLE_BOTTOM = BACK_AISLE_Y + BACK_AISLE_H / 2;
 
@@ -166,7 +166,7 @@ export { isNearFixture };
 // shaded region (a comb shape) rather than 5 separate boxes. The back walkway
 // runs wide enough to reach past the refrigerator, so it reads as one continuous
 // walkway rather than an unmarked gap between the far row and the refrigerator.
-export const WALKWAYS = WALKWAY_GROUPS.map(([l, r]) => ({
+const WALKWAYS = WALKWAY_GROUPS.map(([l, r]) => ({
   x: COL_X[l] + SLOT_W,
   width: COL_X[r] - (COL_X[l] + SLOT_W),
   y: ROW_Y[1],
@@ -174,7 +174,7 @@ export const WALKWAYS = WALKWAY_GROUPS.map(([l, r]) => ({
 }));
 const FLOOR_X = 20;
 const floorRightEdge = refrigeratorX + refrigeratorBox.w + FLOOR_X;
-export const BACK_AISLE = { x: FLOOR_X, y: BACK_AISLE_TOP, width: floorRightEdge - FLOOR_X, height: BACK_AISLE_H };
+const BACK_AISLE = { x: FLOOR_X, y: BACK_AISLE_TOP, width: floorRightEdge - FLOOR_X, height: BACK_AISLE_H };
 
 // A single outline tracing the 4 prongs + the back-aisle bar as one comb-shaped
 // polygon, so the map can fill/stroke it as one continuous region instead of 5
@@ -203,7 +203,7 @@ export const center = (id) => CENTER_CACHE[id];
 // A bench's front faces its walkway; the trio's front is its bottom edge (facing
 // the back walkway below it); the far pair's front is its top edge (facing the
 // back walkway above it).
-export const front = (id) => {
+const front = (id) => {
   if (isNearFixture(id)) { const f = FIXTURES[id]; return { x: f.x + f.w / 2, y: f.y + f.h }; }
   if (isFarFixture(id)) { const f = FIXTURES[id]; return { x: f.x + f.w / 2, y: f.y }; }
   const r = SLOTS[id], c = center(id);

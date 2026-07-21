@@ -1,6 +1,6 @@
 import { NAME_TO_STATION_ID } from "./data.js";
 
-export const isValidStationName = (name) => Object.prototype.hasOwnProperty.call(NAME_TO_STATION_ID, name.toLowerCase());
+const isValidStationName = (name) => Object.prototype.hasOwnProperty.call(NAME_TO_STATION_ID, name.toLowerCase());
 const HEADER_WORDS = /^(equipment|instrument|device)$/i;
 
 const splitRow = (line) => (line.includes("\t") ? line.split("\t") : line.split(","))

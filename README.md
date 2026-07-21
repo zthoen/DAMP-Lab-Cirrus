@@ -1,3 +1,42 @@
-# DAMP-Lab-Protocol-Generator
-This GitHub is for a local interface that will create fake protocols using the BU iGEM 2026 Master Mapping columns 1-3
-This GitHub can be downloaded and run with Node.js and the commands "npm install" and "npm run dev" in a command directory with the folder to automatically open a local host that contains the builder
+# DAMP Lab Choreography Visualizer
+
+A browser-based tool for laying out a lab floor and reasoning about how much a
+technician has to walk to run a protocol on it. No backend, no database — a
+small Vite + React single-page app that runs entirely client-side.
+
+## What it does
+
+- **Equipment Input** — paste an equipment-to-station table from a spreadsheet
+  and see it laid out on a fixed 24-bench lab floor grid (plus 8 utility
+  fixtures: sharps bin, recycling, biohazard waste, sink, glassware, two
+  consumables stations, and a refrigerator).
+- **Protocol Generator** — generate fake protocols (randomized, seeded step
+  sequences) engineered to force movement between benches instead of letting a
+  technician camp at one station.
+- **Protocol Visualizer** — paste a *real* protocol (step/substep/equipment)
+  and see its actual walked route plotted on the map, step by step or start to
+  finish.
+- **Lab Optimizer** — paste one or more real protocols and search for a
+  station layout that minimizes total distance walked across all of them,
+  within a few fixed constraints on what's allowed to move.
+
+## Running it
+
+```
+npm install
+npm run dev
+```
+
+This opens a local dev server (defaults to port 3000). Other scripts:
+
+```
+npm run build     # production build
+npm run preview   # preview the production build
+npm test          # run the test suite (Node's built-in test runner, no extra deps)
+```
+
+## Development
+
+See `CLAUDE.md` for an architectural walkthrough of how the pieces fit
+together — the lab floor's geometry/distance model, the table/protocol
+parsers, and the layout optimizer's search.

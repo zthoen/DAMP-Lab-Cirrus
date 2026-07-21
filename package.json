@@ -1,8 +1,7 @@
 {
   "name": "damp-lab-choreography-visualizer",
   "version": "1.0.0",
-  "description": "DAMP Lab Choreography Visualizer - lab map builder, fake protocol generator, and real protocol route visualizer",
-  "main": "src/index.js",
+  "description": "DAMP Lab Choreography Visualizer - lab map builder, fake protocol generator, real protocol route visualizer, and layout optimizer",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

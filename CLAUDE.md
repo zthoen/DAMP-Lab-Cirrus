@@ -7,12 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 DAMP Lab Choreography Visualizer — a browser-based tool that turns a pasted equipment/bench
 table into a visual lab floor map, generates fake protocols (variable-length step
 sequences) engineered to force a lab technician to keep moving between benches instead
-of camping at one station, and can also import a *real* protocol (pasted step/substep/
-equipment data) to plot the actual route it walks. No backend, no database, no
-simulation — a small Vite + React SPA. This repo is a stripped-down fork of a larger
-discrete-event lab simulator; the simulation engine, dispatch-policy comparisons,
-financials, and stats/experiments tooling were removed because they're not needed for
-this tool's goal.
+of camping at one station, can import a *real* protocol (pasted step/substep/
+equipment data) to plot the actual route it walks, and can search for a station
+layout that minimizes total travel distance across a set of real protocols. No
+backend, no database, no simulation — a small Vite + React SPA. This repo is a
+stripped-down fork of a larger discrete-event lab simulator; the simulation engine,
+dispatch-policy comparisons, financials, and stats/experiments tooling were removed
+because they're not needed for this tool's goal.
 
 ## Commands
 
@@ -21,9 +22,10 @@ this tool's goal.
 - `npm run preview` — preview the production build.
 - `npm test` — run the pure-function test suite (Node's built-in `node --test`, zero
   dependencies; see `test/`). Covers table parsing (`labTable.js`), the routing/
-  distance model (`data.js`), fake-protocol generation (`protocolGen.js`), and real-
-  protocol import (`protocolImport.js`), including seeded reproducibility.
-  `npm test -- test/protocolGen.test.js` runs a single file.
+  distance model (`data.js`), fake-protocol generation (`protocolGen.js`), real-
+  protocol import (`protocolImport.js`), and the layout search (`labOptimizer.js`),
+  including seeded reproducibility. `npm test -- test/protocolGen.test.js` runs a
+  single file.
 
 The repo is ESM (`"type": "module"`). There is no linter or type checker configured.
 
