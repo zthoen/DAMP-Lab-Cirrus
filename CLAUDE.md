@@ -87,13 +87,22 @@ floor-marked walking lane would, rather than the walkway's full width:
   exactly on the walkway's boundary, so the whole line between them never re-enters
   either column's width — there's no bench left to clip.
 - **Different walkways, or anything touching a fixture** (including the trio,
-  aliased to its anchor column's row-3 bench, for visual consistency even though
-  that's numerically a same-column reach in feet): down to the rail's top edge, one
-  diagonal across to the rail's *bottom* edge on the other side
-  (`toRailPoints`/`fromRailPoints`), then up — entering and leaving the rail at
-  different edges is what turns that crossing into a visible diagonal instead of a
-  dead-level line, while staying entirely inside the rail's own open rectangle the
-  whole way.
+  aliased to its anchor column's row-3 bench for visual consistency even though
+  that's numerically a same-column reach in feet) routes via the back-walkway rail
+  (`toRailPoints`/`fromRailPoints`), but each station enters at *its own* natural
+  edge (`railSideY`) — the far row (sink/glassware/consumables/refrigerator) sits
+  below the rail, everything else (a bench via its own walkway, or the trio) sits
+  above it — not always "enter top, leave bottom" regardless of which station is
+  which. Two stations that share a side (the whole trio with each other, the whole
+  far row with each other, or a bench with the trio, which per `routeDistanceFt`
+  never really crosses the rail's depth at all) meet at that one shared edge, so the
+  crossing is a single straight line along it — the entire rail reads as one
+  continuous, directly-walkable pathway for same-side stations, never a detour to
+  the opposite edge and back. Only a pair that's genuinely on opposite sides (a
+  bench or the trio against the far row) draws a real diagonal, entering at one edge
+  and leaving from the other, which is what makes *that* crossing shorter than
+  walking the two legs separately — while staying entirely inside the rail's own
+  open rectangle throughout.
 
 `test/data.test.js` proves the safety property exhaustively — a Liang-Barsky
 segment/AABB check confirms every same-walkway route, across all 24 real benches,

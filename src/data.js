@@ -390,35 +390,36 @@ export const DIST_TABLES_BY_ANCHOR = Object.fromEntries(
   Object.keys(TOUCHING_PAIRS).map((key) => [key, key === DEFAULT_TRIO_ANCHOR ? BENCH_DIST_FT : buildDistTable(nearFixturesForAnchor(key))]),
 );
 
-// The point where a station's own approach meets the back-walkway rail, at a
-// given rail-x — for a bench that's its own walkway's centerline; for a
-// fixture it's directly in line with its front (the back walkway is the only
-// thing on the other side). Takes an explicit y (BACK_AISLE_TOP or
-// BACK_AISLE_BOTTOM, never the single centerline the rail used to be treated
-// as) so a crossing can enter at one edge of the rail and leave at the other —
-// see toRailPoints/fromRailPoints.
-const railPoint = (id, y) => (isFixtureId(id) ? { x: front(id).x, y } : { x: walkwayCenterX(groupOf(id[0])), y });
+// Which edge of the back-walkway rail a station naturally approaches from —
+// the far row (sink/glassware/consumables/refrigerator) sits below the rail
+// (front faces up into it); everything else, a bench via its own walkway or
+// the trio touching row 3, sits above it (front faces down into it, or is
+// already right at that boundary). This is a property of the station itself,
+// not of which side of a given pair it happens to be — two stations on the
+// *same* side only ever need to walk along that one edge, right where they
+// already are, never detouring to the opposite edge and back (see
+// toRailPoints/fromRailPoints/routeWaypoints).
+const railSideY = (id) => (isFarFixture(id) ? BACK_AISLE_BOTTOM : BACK_AISLE_TOP);
+// The point where a station's own approach meets the back-walkway rail, at
+// its own natural edge — for a bench that's its own walkway's centerline;
+// for a fixture it's directly in line with its front (the back walkway is
+// the only thing on the other side).
+const railPoint = (id) => (isFixtureId(id) ? { x: front(id).x, y: railSideY(id) } : { x: walkwayCenterX(groupOf(id[0])), y: railSideY(id) });
 
-// [front(id), ...intermediate points..., top-of-rail] — the walk from a station
-// out to the back-walkway rail, entering at its top edge (the edge nearest the
-// benches/trio).
+// [front(id), ...intermediate points..., that station's own rail edge] — the
+// walk from a station out to the back-walkway rail.
 const toRailPoints = (id) => {
   const f = front(id);
-  const rp = railPoint(id, BACK_AISLE_TOP);
+  const rp = railPoint(id);
   if (isFixtureId(id)) return [f, rp];
   return [f, { x: rp.x, y: f.y }, rp];
 };
-// [bottom-of-rail, ...intermediate points..., front(id)] — the mirror image
-// of toRailPoints, walking in from the rail's bottom edge (the edge nearest
-// the sink/consumables/refrigerator row) to a station, ending at its front —
-// never overlapping into the station's own box. Entering at the top on one
-// side of a crossing and leaving from the bottom on the other (see
-// routeWaypoints) is what turns the rail crossing itself into a diagonal
-// instead of a dead-level line, while staying entirely inside the rail's own
-// open rectangle the whole way.
+// [that station's own rail edge, ...intermediate points..., front(id)] — the
+// mirror image of toRailPoints, walking in from the rail to a station, ending
+// at its front — never overlapping into the station's own box.
 const fromRailPoints = (id) => {
   const f = front(id);
-  const rp = railPoint(id, BACK_AISLE_BOTTOM);
+  const rp = railPoint(id);
   if (isFixtureId(id)) return [rp, f];
   return [rp, { x: rp.x, y: f.y }, f];
 };
@@ -433,8 +434,9 @@ const fromRailPoints = (id) => {
    rail, funnels through the middle WALKWAY_LANE_FT of it (nearLaneX) rather
    than the walkway's full width, the way a real floor-marked walking lane
    would: go to the closest point of that lane, then as directly as possible
-   (a single diagonal, if the rows/rail edges differ) to the point of it
-   closest to the next station, then out to that station's front.
+   to the point of it closest to the next station, then out to that station's
+   front — a diagonal only where that's actually shorter than a straight
+   crossing, never just for its own sake.
 
    Two benches sharing a walkway (same column, or the two columns of a pair,
    any combination of rows) route this way directly: front -> nearest lane
@@ -443,12 +445,22 @@ const fromRailPoints = (id) => {
    both "front" points already sit exactly on the walkway's boundary — the
    whole line from one to the other never re-enters either column's width, so
    there's no bench left to clip (verified exhaustively, for every real bench
-   pair, in data.test.js). Everything else — different walkways, or anything
-   touching a fixture, including the trio for simplicity — routes via the
-   back-walkway rail, entering at its top edge on one side and leaving from
-   its bottom edge on the other (toRailPoints/fromRailPoints), which is what
-   makes that crossing a diagonal too rather than a dead-level line, while
-   staying inside the rail's own open rectangle throughout.
+   pair, in data.test.js).
+
+   Everything else — different walkways, or anything touching a fixture,
+   including the trio for simplicity — routes via the back-walkway rail
+   (toRailPoints/fromRailPoints), each station entering at *its own* natural
+   edge (railSideY). Two stations that share a side — the entire trio with
+   each other, the entire sink/glassware/consumables/refrigerator row with
+   each other, or a bench with the trio (which, per routeDistanceFt, never
+   really crosses the rail's depth at all) — meet at that one shared edge, so
+   the crossing between them is a single straight line, not a detour to the
+   opposite edge and back. Only a pair that's genuinely on opposite sides (a
+   bench or the trio against the far row) draws a real diagonal, entering the
+   rail at one edge and leaving from the other, which is what makes that one
+   case shorter than walking the two legs separately — while staying entirely
+   inside the rail's own open rectangle throughout, since it never leaves the
+   [BACK_AISLE_TOP, BACK_AISLE_BOTTOM] band.
 
    Returns the points *after* the start (the caller already has the previous
    station's front), so consecutive legs of a multi-step path concatenate

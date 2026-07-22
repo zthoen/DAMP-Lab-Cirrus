@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   routeDistanceFt, routeWaypoints, BENCH_DIST_FT, STATION_IDS, STATION_NAME, NAME_TO_STATION_ID, center, front, FIXTURES,
-  WALKWAY_WIDTH_FT, WALKWAY_LANE_FT, BACK_AISLE_FT, BENCH_LEN_FT, BENCH_WIDTH_FT, SLOTS,
+  WALKWAY_WIDTH_FT, WALKWAY_LANE_FT, BACK_AISLE_FT, BENCH_LEN_FT, BENCH_WIDTH_FT, SLOTS, isFixtureId,
   TOUCHING_PAIRS, DEFAULT_TRIO_ANCHOR, nearFixturesForAnchor, trioFixturesForAnchor, buildDistTable, DIST_TABLES_BY_ANCHOR,
 } from "../src/data.js";
 
@@ -256,6 +256,52 @@ test("routeWaypoints for a cross-walkway bench pair also ends at the destination
   const pts = routeWaypoints("A1", "D1");
   assert.deepEqual(pts[pts.length - 1], front("D1"));
   assert.notDeepEqual(pts[pts.length - 1], center("D1"));
+});
+
+// --- The back-walkway rail: same-side pairs are direct, only opposite-side
+// pairs cross it diagonally ---
+
+// Precisely isolates the two rail-crossing points from a routeWaypoints
+// result: toRailPoints(a) contributes 2 points for a fixture or 3 for a
+// bench (front, [align], rail-entry), so the entry point's index is known
+// exactly — no guessing from y-values, which can coincide with a station's
+// own front by construction (e.g. the sharps/biohazard boxes' front already
+// sits exactly on the rail's top edge).
+function railCrossingYs(a, b) {
+  const pts = routeWaypoints(a, b);
+  const entryIdx = (isFixtureId(a) ? 2 : 3) - 1;
+  return [pts[entryIdx].y, pts[entryIdx + 1].y];
+}
+
+test("two far-row fixtures route directly along the rail's bottom edge, no detour to its top edge", () => {
+  // Sink/Glassware/Consumables 1&2/Refrigerator are all on the far (bottom)
+  // side of the back walkway — moving between any two of them should never
+  // detour up to the rail's far/top edge and back.
+  for (const [a, b] of [["SINK", "GLASSWARE"], ["GLASSWARE", "CONSUM1"], ["CONSUM1", "CONSUM2"], ["CONSUM2", "REFRIGERATOR"], ["SINK", "REFRIGERATOR"]]) {
+    const [entryY, exitY] = railCrossingYs(a, b);
+    assert.equal(entryY, exitY, `${a} -> ${b} should cross the rail at one flat y, got ${entryY}, ${exitY}`);
+  }
+});
+
+test("the sharps/recycling/biohazard trio routes directly along the rail's top edge with each other and with a bench", () => {
+  // The trio touches row 3 from above (routeDistanceFt aliases reaching one
+  // to reaching its anchor's row-3 bench, with no separate rail crossing) —
+  // so both trio-to-trio and bench-to-trio moves should stay flat, at the
+  // rail's near/top edge, never dipping to the far/bottom edge.
+  for (const [a, b] of [["SHARPS", "RECYCLE"], ["RECYCLE", "WASTE"], ["SHARPS", "WASTE"], ["A1", "SHARPS"], ["D1", "WASTE"]]) {
+    const [entryY, exitY] = railCrossingYs(a, b);
+    assert.equal(entryY, exitY, `${a} -> ${b} should cross the rail at one flat y, got ${entryY}, ${exitY}`);
+  }
+});
+
+test("a station on the near (top) side of the rail and one on the far (bottom) side still cross it diagonally", () => {
+  // Only a genuine top-side/bottom-side pair — a bench or the trio against
+  // the sink/glassware/consumables/refrigerator row — needs to actually
+  // cross the rail's depth, so only these draw a real diagonal.
+  for (const [a, b] of [["A1", "SINK"], ["SHARPS", "SINK"], ["D1", "REFRIGERATOR"]]) {
+    const [entryY, exitY] = railCrossingYs(a, b);
+    assert.notEqual(entryY, exitY, `${a} -> ${b} should cross the rail diagonally (different y's), got ${entryY}, ${exitY}`);
+  }
 });
 
 // --- Lab Optimizer support: alternate trio anchors ---
