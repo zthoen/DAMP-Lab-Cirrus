@@ -75,7 +75,7 @@ function heatFill(count, maxCount) {
   return mixHex(C.slot, C.red, 0.2 + 0.8 * Math.min(1, count / maxCount));
 }
 
-export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highlightPath, stationNames = STATION_NAME, fixtures = FIXTURES, heatCounts, stepLinks }) {
+export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highlightPath, stationNames = STATION_NAME, fixtures = FIXTURES, heatCounts, stepLinks, onStepComplete }) {
   const hov = hoverSlot ? stationEquip[hoverSlot] : null;
   const filled = STATION_IDS.filter((id) => (stationEquip[id] || []).length > 0).length;
   const visited = heatCounts ? STATION_IDS.filter((id) => heatCounts[id] > 0).length : filled;
@@ -101,17 +101,27 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
   // than blending into the ordinary within-step movement.
   const linkPts = (stepLinks || []).map(([a, b]) => [front(a), ...routeWaypoints(a, b)]);
 
-  // Keyed on the path's contents, not its array identity — the parent tab
-  // rebuilds this array every render (e.g. on hover), which would otherwise
-  // reset playback constantly.
-  const pathKey = path.join("|");
-  const timeline = useMemo(() => buildTimeline(path), [pathKey]);
+  // The walking-technician preview follows the dashed hand-off too, not just the
+  // solid within-step path — its timeline is built from `path` plus, if a step
+  // link is showing, the link's own destination station appended on the end.
+  // That's the only station the extension adds (routeWaypoints already connects
+  // path's last stop to it identically to how the dashed line itself is drawn),
+  // so the dot arrives, pauses, and finishes exactly where the dashed line ends.
+  const hasLinkExtension = path.length > 0 && (stepLinks || []).length > 0;
+  const timelinePath = hasLinkExtension ? [...path, stepLinks[0][1]] : path;
+
+  // Keyed on the timeline path's contents, not its array identity — the parent
+  // tab rebuilds `highlightPath` every render (e.g. on hover), which would
+  // otherwise reset playback constantly.
+  const pathKey = timelinePath.join("|");
+  const timeline = useMemo(() => buildTimeline(timelinePath), [pathKey]);
 
   const [elapsed, setElapsed] = useState(0);
   const [playing, setPlaying] = useState(false);
   const rafRef = useRef(null);
   const lastTsRef = useRef(null);
   const lastKeyRef = useRef(pathKey);
+  const completedKeyRef = useRef(null);
 
   useEffect(() => {
     if (lastKeyRef.current !== pathKey) {
@@ -138,6 +148,17 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
   }, [playing, timeline]);
+
+  // Fires once per finished run — only when the technician actually walked a
+  // step-link extension (there's somewhere to advance *to*), and only once per
+  // pathKey, since elapsed staying at totalMs after finishing would otherwise
+  // re-fire on every unrelated re-render.
+  useEffect(() => {
+    if (hasLinkExtension && timeline.totalMs > 0 && elapsed >= timeline.totalMs && completedKeyRef.current !== pathKey) {
+      completedKeyRef.current = pathKey;
+      onStepComplete?.();
+    }
+  }, [elapsed, timeline.totalMs, pathKey, hasLinkExtension]);
 
   const handlePlay = () => {
     if (timeline.totalMs === 0) return;
@@ -294,10 +315,16 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
             <span><span style={{ display: "inline-block", width: 10, height: 10, background: "#1d3a3a", verticalAlign: -1 }} /> has equipment</span>
           </>
         )}
+        {path.length > 0 && (
+          <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <svg width={18} height={10}><line x1={0} y1={5} x2={18} y2={5} stroke={C.teal} strokeWidth={2} /></svg>
+            Path to Next Station
+          </span>
+        )}
         {linkPts.length > 0 && (
           <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <svg width={18} height={10}><line x1={0} y1={5} x2={18} y2={5} stroke={C.sage} strokeWidth={2} strokeDasharray="4 3" /></svg>
-            step → next step
+            Path to Next Step
           </span>
         )}
         <span style={{ marginLeft: "auto" }}>{visited}/{STATION_IDS.length} stations {heatCounts ? "visited" : "in use"}</span>

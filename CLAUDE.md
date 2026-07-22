@@ -529,11 +529,28 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   `routeWaypoints` route as its own **dashed**, soft-green (`C.sage`) polyline
   layered on top of the main solid one — going only as far as that one pair,
   never extending past the destination station — so a step-to-step hand-off
-  reads as visually distinct from ordinary within-step movement. The Protocol
-  Generator tab never passes it, since its protocols are flat step lists with
-  no step/substep grouping to have a boundary in the first place. This is the
-  only state `LabMap.jsx` owns otherwise; it's a pure render of
-  whatever's in the parsed table. A busy badge (many revisits, e.g.
+  reads as visually distinct from ordinary within-step movement (the bottom
+  legend labels the two "Path to Next Station" and "Path to Next Step"
+  respectively, each only appearing once there's actually a line of that kind
+  to explain). The technician dot isn't confined to the solid line, though —
+  when `stepLinks` is showing, the animation timeline is built from `path`
+  with the link's destination station appended (`routeWaypoints` connects
+  them identically to how the dashed line itself is drawn, so the dot arrives
+  exactly where the dashed line ends), meaning Play walks the dot straight
+  off the end of the current step and on down the dashed hand-off. A sixth
+  optional prop, `onStepComplete`, fires once — guarded by the same path-key
+  ref pattern as the reset effect, so it can't re-fire on an unrelated
+  re-render — when that extended run finishes, and *only* when it was
+  actually extended (finishing a step with no link, or "Full Protocol",
+  never fires it, since there's nowhere further to advance to);
+  `ProtocolImportTab.jsx` implements it to select the next step, so the map
+  and step list both update automatically and the user only has to hit Play
+  again to keep walking through the protocol, one step at a time, without
+  ever clicking back over to the step list themselves. The Protocol
+  Generator tab never passes `stepLinks`/`onStepComplete` at all, since its
+  protocols are flat step lists with no step/substep grouping to have a
+  boundary in the first place. This is the only state `LabMap.jsx` owns
+  otherwise; it's a pure render of whatever's in the parsed table. A busy badge (many revisits, e.g.
   Consumables in a long real protocol) would otherwise grow one wide pill that
   overlaps its neighbors — instead `wrapStepNums` packs the step numbers into as
   few comma-joined rows as fit a safe per-row width (font size also steps down as
@@ -560,7 +577,11 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   (`parsed.stepLinks[selectedIndex]`, found by locating the selected step's
   position in `parsed.steps` since step *numbers* aren't reliably 0-based
   contiguous array indices), so it reads as "here's where this step hands off
-  to," not a map-wide overlay of every boundary at once. The pasted protocol text itself
+  to," not a map-wide overlay of every boundary at once. `onStepComplete`
+  (`handleStepComplete`) is `parsed.steps[selectedIndex + 1]`'s number, if one
+  exists — selecting it is all it does; `LabMap.jsx`'s own path-key reset
+  effect takes it from there, since the newly-selected step is a genuinely
+  different `highlightPath`. The pasted protocol text itself
   is persisted via `usePersistedState(sessionStorage, "damp-lab-raw-protocol", "")`
   — deliberately `sessionStorage`, not `localStorage`: it should survive a
   reload within the same browser session but never resurface in a later one,

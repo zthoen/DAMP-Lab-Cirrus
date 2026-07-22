@@ -38,6 +38,15 @@ export default function ProtocolImportTab({ labData }) {
   // worth of boundaries at once.
   const stepLinks = selectedIndex >= 0 && selectedIndex < parsed.stepLinks.length ? [parsed.stepLinks[selectedIndex]] : [];
 
+  // Once the technician preview finishes walking a step's own path plus its
+  // hand-off to the next step (see LabMap.jsx's onStepComplete), bring that
+  // next step up so the user can just hit Play again to keep going, without
+  // needing to click back over to the step list.
+  const handleStepComplete = () => {
+    const next = parsed.steps[selectedIndex + 1];
+    if (next) setSelectedKey(next.number);
+  };
+
   return (
     <div style={{ display: "grid", gridTemplateColumns: "400px 1fr", gap: 16 }}>
       <div>
@@ -79,6 +88,7 @@ export default function ProtocolImportTab({ labData }) {
           hoverSlot={hoverSlot} setHoverSlot={setHoverSlot}
           highlightPath={highlightPath}
           stepLinks={stepLinks}
+          onStepComplete={handleStepComplete}
         />
         {parsed.steps.length > 0 && (
           <div style={{ marginTop: 8, fontSize: 11.5, fontFamily: MONO, color: C.muted }}>
