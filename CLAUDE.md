@@ -169,10 +169,16 @@ sequence of steps. Each step's type (Read or Write) is deterministic, not random
 (readers/scopes/balances/etc. → Write, since there's a measurement to record;
 centrifuges/shakers/incubators/etc. → Read, since there's nothing to write down).
 Everything else is drawn from a `mulberry32` seeded stream (`src/rng.js`) so the
-same inputs always reproduce the same protocols. Each generated protocol carries
-its step list plus `stationsVisited` and `travelFt` (summed `BENCH_DIST_FT` across
-the sequence, in feet) so "does this actually force movement" is directly visible.
-Protocols are titled `Protocol 1`, `Protocol 2`, etc. in generation order.
+same inputs always reproduce the same protocols — and "same inputs" means the same
+equipment-to-station *mapping*, not the same pasted row order: `equipment` (the
+list every random pick indexes into) is `Object.keys(equipToStationsFull).sort()`,
+not raw insertion order, specifically so two people pasting an equivalent table in
+a different row order and using the same seed get back the identical list of
+protocols — a shareable seed wouldn't mean much if it only reproduced for the
+exact paste that generated it. Each generated protocol carries its step list plus
+`stationsVisited` and `travelFt` (summed `BENCH_DIST_FT` across the sequence, in
+feet) so "does this actually force movement" is directly visible. Protocols are
+titled `Protocol 1`, `Protocol 2`, etc. in generation order.
 
 Every protocol is bookended *if the loaded equipment supports it*: it opens with
 some combination of Glassware/Consumables 1/Consumables 2 steps (`OPEN_POOL`) and

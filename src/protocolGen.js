@@ -52,8 +52,11 @@ function pickPoolSubset(rng, stationEquip, pool) {
 
 /* Generates `count` fake protocols, each a variable-length sequence of steps. Each
    step's type (Read/Write) is determined by the equipment itself, not drawn at
-   random — see stepType.js. Seeded so the same inputs always produce the same
-   protocols.
+   random — see stepType.js. Seeded so the same equipment-to-station mapping and
+   the same seed always produce the same protocols, regardless of what row order
+   the equipment happened to be pasted in — so two people who paste an equivalent
+   table (same equipment, same stations, any row order) and use the same seed get
+   back an identical, sharable list of protocols.
 
    Every protocol opens with steps at some combination of Glassware/Consumables 1/
    Consumables 2 (`OPEN_POOL`) and closes with steps at some combination of Sink/
@@ -117,7 +120,15 @@ export function generateProtocols(equipToStations, opts = {}) {
   // "is any equipment loaded at all" above, since an empty lab shouldn't
   // generate pipette-only protocols just because the pool is always available.
   const equipToStationsFull = { ...equipToStations, Pipette: PIPETTE_STATIONS };
-  const equipment = Object.keys(equipToStationsFull);
+  // Sorted, not insertion order: `equipToStations`'s key order is whatever row
+  // order the equipment happened to be pasted in, which has nothing to do with
+  // the lab itself — two people pasting the same equipment list in a different
+  // row order would otherwise build a differently-ordered `stationEquip` below
+  // and get different protocols out of the same seed. Sorting makes generation
+  // depend only on *what* was pasted, not the order it was typed/copied in, so
+  // the same seed really does reproduce the same protocols for anyone with the
+  // same equipment list.
+  const equipment = Object.keys(equipToStationsFull).sort();
 
   const singleStationLab = equipment.every((e) => new Set(equipment.flatMap((x) => equipToStationsFull[x])).size <= 1);
   if (singleStationLab) warnings.push("Every piece of equipment maps to the same station — protocols can't force movement.");

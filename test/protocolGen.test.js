@@ -25,6 +25,25 @@ test("same seed produces identical protocols (reproducible)", () => {
   assert.deepEqual(a, b);
 });
 
+test("same seed reproduces the same protocols even when the equipment was pasted in a different row order", () => {
+  // Two people typing/copying the same lab's equipment list will rarely paste
+  // the rows in the exact same order — reproducibility across a shared seed
+  // has to hold up to that, not just to an identical paste.
+  const inOrder = table();
+  const reordered = parseLabTable(`
+Vortex Mixer\tImaging
+Centrifuge\tPCR
+Opentrons Flex Robot\tOpentrons
+Microscope\tResearch
+Thermal Cycler\tDNA Prep
+Gel Doc\tGel Imaging
+`.trim());
+  assert.equal(reordered.errors.length, 0);
+  const a = generateProtocols(inOrder.equipToStations, { count: 8, minSteps: 3, maxSteps: 6, seed: 42 });
+  const b = generateProtocols(reordered.equipToStations, { count: 8, minSteps: 3, maxSteps: 6, seed: 42 });
+  assert.deepEqual(a, b);
+});
+
 test("different seeds diverge", () => {
   const { equipToStations } = table();
   const a = generateProtocols(equipToStations, { count: 5, minSteps: 3, maxSteps: 6, seed: 1 });
