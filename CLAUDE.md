@@ -430,8 +430,14 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   from the plain empty/has-equipment coloring to a heat map: `heatFill` mixes
   `C.slot` (unvisited, the same neutral gray as "empty") toward `C.red` by
   `count / maxCount` (via `mixHex` in constants.js), with a 0.2 floor so even a
-  single visit reads as visibly hotter than zero; each box's corner label switches
-  from "N eq" to "N visits" to match, and the bottom legend swaps its two-swatch
+  single visit reads as visibly hotter than zero. Every station shows its own
+  visit count in heat-map mode, benches and fixtures alike: a bench's corner
+  label switches from "N eq" to "N visits" to match; a fixture (too small to
+  hold text inside its own box) gets a second `"N visits"` line stacked next to
+  its existing ID label — below the ID for the sharps/recycling/biohazard trio
+  (which only has open floor below it, in the walkway) and below the box itself
+  for the sink/glassware/consumables/refrigerator row (whose ID sits above,
+  leaving the space below the box free). The bottom legend swaps its two-swatch
   key for a gradient bar between "0 visits" and the busiest station's count. A
   multi-step `highlightPath` is expanded through
   `routeWaypoints` per consecutive pair into one continuous **solid** line (always
@@ -474,12 +480,15 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   button defers that call a tick (`setTimeout(fn, 0)`, flipping an
   `isOptimizing` flag first) so it can repaint to "Optimizing…" before an
   exact search's worst-case second-or-two runs, rather than just looking
-  unresponsive until it's done. The result renders as an `OptimalityBanner`
-  (green "provably optimal" using `result.optimal`/`relevantStationCount`
-  when the search verified every arrangement, amber "best-effort" otherwise),
-  a stat row (current/optimized total ft, ft+% saved, and `totalMoves`), a
-  side-by-side pair of heat-mapped `LabMap`s — "Optimized layout" first/left
-  (the result the user is here for), "Current layout" second/right for
+  unresponsive until it's done. The result renders as an `OptimalityBanner` —
+  green ("Exact Search: Optimized layout found") using `result.optimal` when
+  the search verified every arrangement, amber ("Best Effort Result: These
+  protocols reference N stations -- too many for an exact search. This layout
+  is improved but not optimized.", using `result.relevantStationCount`)
+  otherwise — a stat row (current/optimized total ft, ft+% saved, and
+  `totalMoves`), a side-by-side pair of heat-mapped `LabMap`s — "Improved
+  Layout" first/left (the result the user is here for; deliberately not called
+  "Optimized" since a best-effort result isn't one), "Current layout" second/right for
   comparison, each fed its own `stationNames`/`fixtures`/`stationEquip`/
   `heatCounts` (from `result.best`/`result.baseline`) via the override props
   above — and a "Recommended moves" table (`{ name, from, to }`, the From

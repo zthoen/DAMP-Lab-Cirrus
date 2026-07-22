@@ -71,20 +71,28 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
   };
 
   // Fixtures are far too small (a couple of feet) to hold their ID or name inside
-  // the box the way a bench does — the code goes outside it instead, and the full
-  // name/equipment list lives in the hover panel. The sharps/recycling/biohazard
-  // trio touches row 3 with no gap, so its label goes below (there's no room
-  // above without colliding with the bench's own "N eq" text); the sink/
-  // consumables pair has headroom above it instead.
+  // the box the way a bench does — the code (and, in heat-map mode, the visit
+  // count) goes outside it instead, and the full name/equipment list lives in
+  // the hover panel. The sharps/recycling/biohazard trio touches row 3 with no
+  // gap, so its labels go below, stacked into the open walkway space (there's
+  // no room above without colliding with the bench row); the sink/consumables/
+  // refrigerator pair has headroom above for its ID, so the visit count goes
+  // below instead, where the floor is otherwise empty.
   const fixtureBox = (id, r) => {
     const equip = stationEquip[id] || [];
     const isHov = hoverSlot === id;
-    const fill = heatCounts ? heatFill(heatCounts[id] || 0, maxHeat) : (equip.length === 0 ? C.slot : "#1d3a3a");
-    const labelY = isNearFixture(id) ? r.y + r.h + 10 : r.y - 6;
+    const count = heatCounts ? (heatCounts[id] || 0) : null;
+    const fill = heatCounts ? heatFill(count, maxHeat) : (equip.length === 0 ? C.slot : "#1d3a3a");
+    const near = isNearFixture(id);
+    const idLabelY = near ? r.y + r.h + 10 : r.y - 6;
+    const countLabelY = near ? r.y + r.h + 20 : r.y + r.h + 10;
     return (
       <g key={id} onMouseEnter={() => setHoverSlot(id)}>
-        <text x={r.x + r.w / 2} y={labelY} textAnchor="middle" fontFamily={MONO} fontSize={8} fontWeight={700} fill="#88a0b6">{id}</text>
+        <text x={r.x + r.w / 2} y={idLabelY} textAnchor="middle" fontFamily={MONO} fontSize={8} fontWeight={700} fill="#88a0b6">{id}</text>
         <rect x={r.x} y={r.y} width={r.w} height={r.h} fill={fill} stroke={isHov ? C.teal : C.slotLine} strokeWidth={isHov ? 2 : 1.2} />
+        {heatCounts && (
+          <text x={r.x + r.w / 2} y={countLabelY} textAnchor="middle" fontFamily={MONO} fontSize={7.5} fill={count > 0 ? C.text : "#3f5163"}>{count} visit{count === 1 ? "" : "s"}</text>
+        )}
       </g>
     );
   };

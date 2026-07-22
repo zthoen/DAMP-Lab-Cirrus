@@ -101,7 +101,7 @@ export default function LabOptimizerTab({ labData }) {
           <SummaryRow result={result} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginTop: 14 }}>
             <div>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: C.teal, marginBottom: 6 }}>Optimized layout</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: C.teal, marginBottom: 6 }}>Improved Layout</div>
               <LabMap
                 stationEquip={result.best.stationEquip}
                 stationNames={result.best.stationNames}
@@ -141,9 +141,9 @@ function OptimalityBanner({ result }) {
     }}>
       {result.optimal
         ? (n === 0
-          ? "These protocols never touch a movable bench, so the current layout is already optimal — nothing to rearrange."
-          : `Provably optimal: every possible arrangement of the ${n} station${n === 1 ? "" : "s"} these protocols use was checked, and this is the best one.`)
-        : `Best-effort result: these protocols reference ${n} stations — too many to exhaustively check every arrangement, so this is the best layout the search found, not a guaranteed global optimum.`}
+          ? "Exact Search: These protocols never touch a movable bench, so the current layout is already optimal — nothing to rearrange."
+          : "Exact Search: Optimized layout found")
+        : `Best Effort Result: These protocols reference ${n} stations -- too many for an exact search. This layout is improved but not optimized.`}
     </div>
   );
 }
