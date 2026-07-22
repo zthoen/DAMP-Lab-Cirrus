@@ -251,25 +251,58 @@ export const PIPETTE_STATIONS = PIPETTE_STATION_NAMES.map((n) => NAME_TO_STATION
 
 const rowOf = (id) => Number(id[1]);
 
+/* Same-walkway pairs (same column, or the two columns of a walkway pair) never
+   need the back-walkway detour — the whole walkway between them is one open
+   rectangle. Two benches in the same COLUMN still can't cut a corner, though:
+   a third bench sits directly between any two non-adjacent rows there (A1 and
+   A3 have A2 physically between them), so that case stays a pure vertical
+   distance.
+
+   Between two DIFFERENT columns of the same walkway, a diagonal is only safe
+   when the rows are the same or adjacent. A column has no gaps between its own
+   three benches (A1 touches A2 touches A3), so while a diagonal's x is still
+   inside a column's width, its y can't drift outside that specific bench's own
+   row without clipping the row next to it — and for a same-row or adjacent-row
+   pair, the straight line from center to center never drifts that far before
+   x clears the column on both ends (verified exhaustively against every real
+   bench pair in data.test.js). Two rows apart (row 1 to row 3), that's no
+   longer true — the middle row is too tall relative to the walkway's width, so
+   the direct line clips it on both sides — so that one case keeps the old
+   squared-off route instead. Diagonal or not, it's still never worse than the
+   squared-off distance (Math.hypot(v, l) <= v + l). */
 function benchToBenchFt(aId, bId) {
   if (aId === bId) return 0;
   const colA = aId[0], colB = bId[0], rowA = rowOf(aId), rowB = rowOf(bId);
   const gA = groupOf(colA), gB = groupOf(colB);
+  const vertical = Math.abs(rowA - rowB) * BENCH_LEN_FT;
   if (gA === gB) {
-    const vertical = Math.abs(rowA - rowB) * BENCH_LEN_FT;
-    const lateral = colA === colB ? 0 : WALKWAY_WIDTH_FT;
-    return vertical + lateral;
+    if (colA === colB) return vertical;
+    if (Math.abs(rowA - rowB) <= 1) return Math.hypot(vertical, WALKWAY_WIDTH_FT);
+    return vertical + WALKWAY_WIDTH_FT; // two rows apart: the middle row blocks a direct diagonal
   }
+  // Different walkways: down/up your own walkway is still a straight, un-
+  // diagonalizable vertical hop (cutting sideways before reaching the back
+  // walkway would clip straight through whatever benches sit between the two
+  // walkways). Only once you've reached the back walkway is the floor open in
+  // every direction, so *that* crossing — its own depth plus however far
+  // sideways to the other walkway — can be walked as one diagonal instead of
+  // a straight-across-then-done line, the same reasoning as the same-walkway
+  // case above, just applied to the aisle's own rectangle instead of a
+  // walkway's.
   const down = (3 - rowA) * BENCH_LEN_FT;
   const up = (3 - rowB) * BENCH_LEN_FT;
   const lateral = Math.abs(COL_ORDER.indexOf(colA) - COL_ORDER.indexOf(colB)) * BENCH_WIDTH_FT;
-  return down + BACK_AISLE_FT + lateral + up;
+  return down + Math.hypot(BACK_AISLE_FT, lateral) + up;
 }
 
+// Same idea as benchToBenchFt's cross-walkway case: down your own walkway
+// stays a straight vertical hop, but the back-walkway crossing to line up
+// with the far fixture's position is one diagonal (its own depth plus the
+// lateral distance) instead of two squared-off legs.
 function benchToFarFt(benchId, farId) {
   const down = (3 - rowOf(benchId)) * BENCH_LEN_FT;
   const lateral = Math.abs(COL_ORDER.indexOf(benchId[0]) * BENCH_WIDTH_FT - FAR_FEETX[farId]);
-  return down + BACK_AISLE_FT + lateral;
+  return down + Math.hypot(BACK_AISLE_FT, lateral);
 }
 
 /* A bench can only be reached through its walkway, so every bench-to-bench route
@@ -277,7 +310,12 @@ function benchToFarFt(benchId, farId) {
    on a different walkway) across the back walkway -> down/up the destination's
    walkway -> front of the destination bench. Two benches sharing one walkway
    (same column, or the two columns of a touching pair) skip the back-walkway
-   detour entirely.
+   detour entirely. Wherever a leg of that route is a single open rectangle of
+   floor with nothing else in it (a shared walkway between two different
+   columns, or the back walkway itself), it's walked as one diagonal line
+   instead of two squared-off ones — shorter, and still never crosses a bench,
+   since the whole rectangle it's cutting across is clear (see benchToBenchFt/
+   benchToFarFt).
 
    The sharps/recycling/biohazard trio sits touching row 3, so reaching one is
    *aliased* to reaching its anchor column's row-3 bench (recycling straddles
@@ -324,54 +362,65 @@ export const DIST_TABLES_BY_ANCHOR = Object.fromEntries(
   Object.keys(TOUCHING_PAIRS).map((key) => [key, key === DEFAULT_TRIO_ANCHOR ? BENCH_DIST_FT : buildDistTable(nearFixturesForAnchor(key))]),
 );
 
-// The point on the back-walkway travel line aligned with a station's x — for a
-// bench that's its own walkway's centerline; for a fixture it's directly in
-// line with its front (the back walkway is the only thing on the other side).
-const railPoint = (id) => (isFixtureId(id) ? { x: front(id).x, y: BACK_AISLE_Y } : { x: walkwayCenterX(groupOf(id[0])), y: BACK_AISLE_Y });
+// The point where a station's own approach meets the back-walkway rail, at a
+// given rail-x — for a bench that's its own walkway's centerline; for a
+// fixture it's directly in line with its front (the back walkway is the only
+// thing on the other side). Takes an explicit y (BACK_AISLE_TOP or
+// BACK_AISLE_BOTTOM, never the single centerline the rail used to be treated
+// as) so a crossing can enter at one edge of the rail and leave at the other —
+// see toRailPoints/fromRailPoints.
+const railPoint = (id, y) => (isFixtureId(id) ? { x: front(id).x, y } : { x: walkwayCenterX(groupOf(id[0])), y });
 
-// [front(id), ...intermediate points..., railPoint(id)] — the walk from a station
-// out to the back-walkway rail.
+// [front(id), ...intermediate points..., top-of-rail] — the walk from a station
+// out to the back-walkway rail, entering at its top edge (the edge nearest the
+// benches/trio).
 const toRailPoints = (id) => {
   const f = front(id);
-  if (isFixtureId(id)) return [f, railPoint(id)];
-  return [f, { x: railPoint(id).x, y: f.y }, railPoint(id)];
+  const rp = railPoint(id, BACK_AISLE_TOP);
+  if (isFixtureId(id)) return [f, rp];
+  return [f, { x: rp.x, y: f.y }, rp];
 };
-// [railPoint(id), ...intermediate points..., front(id), center(id)] — the mirror
-// image of toRailPoints, walking from the rail in to a station.
+// [bottom-of-rail, ...intermediate points..., front(id), center(id)] — the
+// mirror image of toRailPoints, walking in from the rail's bottom edge (the
+// edge nearest the sink/consumables/refrigerator row) to a station. Entering
+// at the top on one side of a crossing and leaving from the bottom on the
+// other (see routeWaypoints) is what turns the rail crossing itself into a
+// diagonal instead of a dead-level line, while staying entirely inside the
+// rail's own open rectangle the whole way.
 const fromRailPoints = (id) => {
   const f = front(id), c = center(id);
-  if (isFixtureId(id)) return [railPoint(id), f, c];
-  return [railPoint(id), { x: railPoint(id).x, y: f.y }, f, c];
+  const rp = railPoint(id, BACK_AISLE_BOTTOM);
+  if (isFixtureId(id)) return [rp, f, c];
+  return [rp, { x: rp.x, y: f.y }, f, c];
 };
 
-/* Pixel waypoints for drawing the same route on the SVG map. Bench-to-bench
-   mirrors routeDistanceFt's same-walkway/cross-walkway shapes exactly. Anything
-   touching a fixture routes via the back-walkway rail — including the trio, for
-   simplicity: even though reaching (say) B3 from SHARPS is numerically a
-   same-column reach in feet, the drawn path still shows it crossing the rail,
-   which stays visually consistent with every other fixture-involving route
-   rather than special-casing one more shape. Returns the points *after* the
-   start (the caller already has the previous station's center), so consecutive
-   legs of a multi-step path concatenate directly into one continuous line. */
+/* Pixel waypoints for drawing the same route on the SVG map, mirroring
+   routeDistanceFt's shapes: same-walkway/different-column benches on the same
+   or an adjacent row cut straight across the walkway between their centers;
+   same-column benches (and different-column benches two rows apart, where a
+   direct line would clip the row in between) walk the shared front edge in a
+   straight line instead; everything else routes via the back-walkway rail,
+   including the trio, for simplicity — even though reaching (say) B3 from
+   SHARPS is numerically a same-column reach in feet, the drawn path still
+   shows it crossing the rail, which stays visually consistent with every
+   other fixture-involving route rather than special-casing one more shape. A
+   rail crossing enters at the rail's top edge on one side and leaves from its
+   bottom edge on the other (toRailPoints/fromRailPoints), so the crossing
+   itself is a diagonal rather than a dead-level line, exactly like the
+   walkway case, while staying inside the rail's own open rectangle
+   throughout. Returns the points *after* the start (the caller already has
+   the previous station's center), so consecutive legs of a multi-step path
+   concatenate directly into one continuous line. */
 export function routeWaypoints(aId, bId) {
-  const aFix = isFixtureId(aId), bFix = isFixtureId(bId);
-
-  if (!aFix && !bFix) {
-    const fA = front(aId), fB = front(bId), cB = center(bId);
+  if (!isFixtureId(aId) && !isFixtureId(bId)) {
     const gA = groupOf(aId[0]), gB = groupOf(bId[0]);
     if (gA === gB) {
+      if (aId[0] === bId[0]) return [front(aId), front(bId), center(bId)];
+      if (Math.abs(rowOf(aId) - rowOf(bId)) <= 1) return [center(bId)];
       const wx = walkwayCenterX(gA);
-      return [fA, { x: wx, y: fA.y }, { x: wx, y: fB.y }, fB, cB];
+      const fA = front(aId), fB = front(bId);
+      return [fA, { x: wx, y: fA.y }, { x: wx, y: fB.y }, fB, center(bId)];
     }
-    const wxA = walkwayCenterX(gA), wxB = walkwayCenterX(gB);
-    return [
-      fA, { x: wxA, y: fA.y }, { x: wxA, y: BACK_AISLE_Y },
-      { x: wxB, y: BACK_AISLE_Y }, { x: wxB, y: fB.y }, fB, cB,
-    ];
   }
-
-  // At least one endpoint is a fixture: always route via the back-walkway rail —
-  // toRailPoints(aId) ends exactly where fromRailPoints(bId) begins (both at
-  // railPoint), so concatenating them traces the lateral rail segment for free.
   return [...toRailPoints(aId), ...fromRailPoints(bId)];
 }

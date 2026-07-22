@@ -206,7 +206,11 @@ Equip B\tNanoDrop
   let minDist = Infinity;
   for (const a of ids) for (const b of ids) if (a !== b) minDist = Math.min(minDist, BENCH_DIST_FT[a][b]);
 
-  assert.equal(out.best.totalTravelFt, 3 * minDist);
+  // totalTravelFt is the *sum* rounded once at the end (see travelFtOf in
+  // protocolImport.js), not a sum of pre-rounded legs — diagonal routes can
+  // land on a non-integer number of feet, so round this independently-built
+  // reference the same way before comparing.
+  assert.equal(out.best.totalTravelFt, Math.round(3 * minDist));
 });
 
 test("a 3-station scenario hits the exhaustively-verified true minimum", () => {
@@ -248,7 +252,9 @@ Equip C\tPCR
     }
   }
 
-  assert.equal(out.best.totalTravelFt, bestCost);
+  // Rounded once at the end, matching travelFtOf's own convention (see the
+  // 2-station test above) — diagonal routes can be fractional per-leg.
+  assert.equal(out.best.totalTravelFt, Math.round(bestCost));
 });
 
 test("exact results are identical across every seed (the search is deterministic when optimal)", () => {

@@ -49,17 +49,42 @@ vertical hop between rows within a walkway), `BENCH_WIDTH_FT` (~2.5ft, the later
 space one column takes up — used for every column-to-column distance), `WALKWAY_
 WIDTH_FT` (~6ft, the lateral crossing when two columns share one walkway),
 `BACK_AISLE_FT` (~5ft, the back walkway's one-time crossing when two stations are on
-different walkways). `routeDistanceFt(a, b)` picks one of two shapes: same walkway
-(same column, or the two columns of a pair) is just vertical bench-hops plus at most
-one walkway-width crossing; different walkways pay to descend/ascend each side's
-walkway and cross the back aisle in between (the lateral portion of that crossing is
-counted in bench-*widths*, not bench-lengths — you're passing the side of each
-column, not its depth). `BENCH_DIST_FT` precomputes this for every station pair (so
-the protocol generator doesn't recompute a route per draw) and `routeWaypoints(a, b)`
-returns the matching pixel path — front of the start bench, through the middle of
-whatever walkway(s) it uses, to the front and then the center of the destination —
-so the map's path overlay always reads as "walk to the aisle, use it, arrive," never
-a line cutting through a bench.
+different walkways). `routeDistanceFt(a, b)` picks one of three shapes, walking
+diagonally instead of in an L wherever a diagonal is provably safe (never crosses a
+bench that isn't one of the route's own two endpoints) and always shorter
+(`Math.hypot(v, l) <= v + l`):
+- **Same walkway, same or adjacent row** (same column with `|rowA-rowB| <= 1`, or two
+  different columns of a pair on any row): the vertical hop and the lateral crossing
+  are walked as one diagonal — the whole rectangle between the two stations is open
+  floor, so nothing blocks a direct line.
+- **Same walkway, two rows apart** (row 1 to row 3): a bench sits directly between
+  the two rows regardless of which column it's in — no gaps within a column — so a
+  direct diagonal would clip it. This one case falls back to the old squared-off
+  route (down/up plus at most one walkway-width crossing).
+- **Different walkways**: descending/ascending each side's own walkway stays a
+  straight vertical hop (cutting sideways before reaching the back walkway would clip
+  whatever benches sit between the two walkways), but once you're at the back
+  walkway — open along its *entire* width — its own crossing depth and however far
+  laterally to the other walkway (counted in bench-*widths*, not bench-lengths) are
+  walked as one diagonal too, the same reasoning as the same-walkway case, just
+  applied to the aisle's rectangle instead of a walkway's.
+
+`BENCH_DIST_FT` precomputes this for every station pair (so the protocol generator
+doesn't recompute a route per draw) and `routeWaypoints(a, b)` returns the matching
+pixel path, mirroring the same three shapes: a direct line between the two bench
+centers for the safe-diagonal case; front-of-start to front-of-end along the shared
+edge for the two-rows-apart and same-column cases; and, for a back-walkway crossing,
+down to the rail's top edge, one diagonal across to the rail's *bottom* edge on the
+other side (`toRailPoints`/`fromRailPoints`), then up — entering and leaving the rail
+at different edges is what turns that crossing into a visible diagonal instead of a
+dead-level line, while staying entirely inside the rail's own open rectangle the
+whole way. Every fixture-touching route (including the sharps/recycling/biohazard
+trio, aliased to its anchor column's row-3 bench) always goes via the rail this way,
+for visual consistency, even in cases that are numerically a same-column reach.
+`test/data.test.js` proves the safety property exhaustively — a Liang-Barsky segment/
+AABB check confirms every same-walkway diagonal route, across all 24 real benches,
+never crosses a third bench's box — rather than trusting the hand-argued geometry
+alone.
 
 **Fixed utility fixtures (`src/data.js` `FIXTURES`)** — 8 baseline destinations that
 never move and are otherwise treated exactly like a bench, split across the back
@@ -446,9 +471,9 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   leaving the space below the box free). The bottom legend swaps its two-swatch
   key for a gradient bar between "0 visits" and the busiest station's count. A
   multi-step `highlightPath` is expanded through
-  `routeWaypoints` per consecutive pair into one continuous **solid** line (always
-  touching the front of every bench it uses and the middle of every walkway it
-  transits) — never a dashed line or one cutting through a bench. A station revisited
+  `routeWaypoints` per consecutive pair into one continuous **solid** line — a direct
+  diagonal wherever that's safe, the front-edge/rail detours only where a bench would
+  otherwise block it — never a dashed line or one cutting through a bench. A station revisited
   by non-consecutive steps gets one merged "1,3"-style badge instead of a second
   marker silently overlapping the first. A busy badge (many revisits, e.g.
   Consumables in a long real protocol) would otherwise grow one wide pill that
