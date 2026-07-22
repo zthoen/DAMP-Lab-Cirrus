@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  routeDistanceFt, routeWaypoints, BENCH_DIST_FT, STATION_IDS, STATION_NAME, NAME_TO_STATION_ID, center, FIXTURES,
-  WALKWAY_WIDTH_FT, BACK_AISLE_FT, BENCH_LEN_FT, BENCH_WIDTH_FT, SLOTS,
+  routeDistanceFt, routeWaypoints, BENCH_DIST_FT, STATION_IDS, STATION_NAME, NAME_TO_STATION_ID, center, front, FIXTURES,
+  WALKWAY_WIDTH_FT, WALKWAY_LANE_FT, BACK_AISLE_FT, BENCH_LEN_FT, BENCH_WIDTH_FT, SLOTS,
   TOUCHING_PAIRS, DEFAULT_TRIO_ANCHOR, nearFixturesForAnchor, trioFixturesForAnchor, buildDistTable, DIST_TABLES_BY_ANCHOR,
 } from "../src/data.js";
 
@@ -96,39 +96,70 @@ test("a same-walkway pair two rows apart never gets a diagonal shortcut either �
   assert.equal(routeDistanceFt("B3", "A1"), 2 * BENCH_LEN_FT + WALKWAY_WIDTH_FT); // symmetric
 });
 
-test("routeWaypoints draws a same-walkway, adjacent-or-same-row diagonal as one direct line between the two bench centers", () => {
-  // No intermediate walkway-centerline detour points — just straight from
-  // (the caller's already-known) center(A1) to center(B2).
-  assert.deepEqual(routeWaypoints("A1", "B2"), [center("B2")]);
+test("routeWaypoints starts and ends every same-walkway route at the two stations' fronts, never their centers", () => {
+  for (const [aId, bId] of [["A1", "B2"], ["A1", "B3"], ["A1", "A3"], ["A1", "B1"]]) {
+    const pts = routeWaypoints(aId, bId);
+    assert.deepEqual(pts[0], front(aId), `${aId} -> ${bId} should start at ${aId}'s front`);
+    assert.deepEqual(pts[pts.length - 1], front(bId), `${aId} -> ${bId} should end at ${bId}'s front`);
+    assert.notDeepEqual(pts[pts.length - 1], center(bId), `${aId} -> ${bId} shouldn't overlap into ${bId}'s box`);
+  }
 });
 
-test("routeWaypoints falls back to the squared-off route for a same-walkway pair two rows apart", () => {
-  const pts = routeWaypoints("A1", "B3");
-  assert.deepEqual(pts[pts.length - 1], center("B3"));
-  assert.ok(pts.length > 1, "should not be a single direct diagonal point");
+test("routeWaypoints funnels a same-walkway route through the middle WALKWAY_LANE_FT of the walkway, not its full width", () => {
+  const gapPx = SLOTS.B1.x - (SLOTS.A1.x + SLOTS.A1.w);
+  const laneHalfPx = (gapPx * WALKWAY_LANE_FT) / WALKWAY_WIDTH_FT / 2;
+  const laneCenterX = (SLOTS.A1.x + SLOTS.A1.w + SLOTS.B1.x) / 2;
+  assert.ok(WALKWAY_LANE_FT < WALKWAY_WIDTH_FT, "the lane should be narrower than the walkway itself");
+
+  const pts = routeWaypoints("A1", "B2");
+  // A (left column, front faces right) enters at the lane's near/left edge;
+  // B (right column, front faces left) is reached via the lane's near/right
+  // edge — never the walkway's raw outer boundary on either side.
+  assert.equal(pts[1].x, laneCenterX - laneHalfPx);
+  assert.equal(pts[2].x, laneCenterX + laneHalfPx);
+  assert.ok(pts[1].x > pts[0].x, "should step inward from A's own edge to reach the lane, not walk its raw edge");
+  assert.ok(pts[2].x < pts[3].x, "should leave the lane before reaching B's own edge, not walk its raw edge");
 });
 
-test("routeWaypoints keeps a same-column move on the shared front edge, not a raw center-to-center line", () => {
+test("routeWaypoints goes to the closest point of the lane, then as directly as possible to the next station", () => {
+  // "Closest": entering from the front, the very next point is already inside
+  // the lane — no detour past it and back. "As directly as possible": from
+  // there to the point of the lane nearest the destination is a single
+  // segment (no extra bends), then straight out to the destination's front.
+  const pts = routeWaypoints("A1", "B2");
+  assert.equal(pts.length, 4, "front -> lane entry -> lane exit -> front, nothing more");
+});
+
+test("routeWaypoints keeps a same-column move inside the lane too — both ends use the same near edge", () => {
   const pts = routeWaypoints("A1", "A3");
-  assert.deepEqual(pts[pts.length - 1], center("A3"));
-  // The middle of the path (between the two front-edge points) is a single
-  // straight vertical run at the shared edge x, not a detour into the walkway.
-  assert.equal(pts[0].x, pts[1].x);
+  assert.deepEqual(pts[pts.length - 1], front("A3"));
+  // Same column means the same "near" side of the lane on both ends, so the
+  // middle of the path is a single straight vertical run inside the lane.
+  assert.equal(pts[1].x, pts[2].x);
+  assert.notEqual(pts[1].x, pts[0].x, "should still step off A1's own edge into the lane");
 });
 
-test("every same-walkway diagonal route (bench to bench, different columns) avoids every other bench's box", () => {
+test("every same-walkway route (any two columns, any two rows) avoids every other bench's box", () => {
+  // Front-to-front, funneled through the lane, is safe for every combination
+  // — including two rows apart, which a raw center-to-center diagonal is not
+  // (see the routing model's own comments) — because the whole line from one
+  // front to the other never re-enters either column's width.
+  const WALKWAY_GROUPS = [["A", "B"], ["C", "D"], ["E", "F"], ["G", "H"]];
+  const groupOf = (col) => WALKWAY_GROUPS.findIndex((g) => g.includes(col));
+
   for (const aId of Object.keys(SLOTS)) {
     for (const bId of Object.keys(SLOTS)) {
-      if (aId === bId || aId[0] === bId[0]) continue; // only the true diagonal case
+      if (aId === bId || groupOf(aId[0]) !== groupOf(bId[0])) continue; // different walkways route via the back aisle instead
       const pts = routeWaypoints(aId, bId);
-      if (pts.length !== 1) continue; // not a same-walkway pair (routes via the aisle instead)
-      const segment = [center(aId), pts[0]];
-      for (const [otherId, rect] of Object.entries(SLOTS)) {
-        if (otherId === aId || otherId === bId) continue;
-        assert.ok(
-          !segmentCrossesRect(segment[0], segment[1], rect),
-          `${aId} -> ${bId} diagonal cuts through ${otherId}`,
-        );
+      for (let i = 1; i < pts.length; i++) {
+        const segment = [pts[i - 1], pts[i]];
+        for (const [otherId, rect] of Object.entries(SLOTS)) {
+          if (otherId === aId || otherId === bId) continue;
+          assert.ok(
+            !segmentCrossesRect(segment[0], segment[1], rect),
+            `${aId} -> ${bId} leg ${i} cuts through ${otherId}`,
+          );
+        }
       }
     }
   }
@@ -211,13 +242,20 @@ test("the refrigerator is a far fixture, reachable like any other far fixture", 
   assert.ok(routeDistanceFt("H3", "REFRIGERATOR") < routeDistanceFt("A3", "REFRIGERATOR"));
 });
 
-test("routeWaypoints for a fixture ends at its own center and starts at a real point", () => {
+test("routeWaypoints for a fixture ends at its own front, not its center, and starts at a real point", () => {
   for (const id of ["SHARPS", "RECYCLE", "WASTE", "SINK", "GLASSWARE", "CONSUM1", "CONSUM2", "REFRIGERATOR"]) {
     const pts = routeWaypoints("A1", id);
-    assert.deepEqual(pts[pts.length - 1], center(id), `${id} path should end at its center`);
+    assert.deepEqual(pts[pts.length - 1], front(id), `${id} path should end at its front`);
+    assert.notDeepEqual(pts[pts.length - 1], center(id), `${id} path shouldn't overlap into its own box`);
     assert.equal(typeof pts[0].x, "number");
     assert.equal(typeof pts[0].y, "number");
   }
+});
+
+test("routeWaypoints for a cross-walkway bench pair also ends at the destination's front, not its center", () => {
+  const pts = routeWaypoints("A1", "D1");
+  assert.deepEqual(pts[pts.length - 1], front("D1"));
+  assert.notDeepEqual(pts[pts.length - 1], center("D1"));
 });
 
 // --- Lab Optimizer support: alternate trio anchors ---

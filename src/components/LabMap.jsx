@@ -1,6 +1,6 @@
 import React from "react";
 import { VIEW_W, VIEW_H, C, MONO, wrapLabel, mixHex } from "../constants.js";
-import { SLOTS, FIXTURES, STATION_IDS, STATION_NAME, center, routeWaypoints, WALKWAY_PATH, isNearFixture, FIXTURE_PX_PER_FT } from "../data.js";
+import { SLOTS, FIXTURES, STATION_IDS, STATION_NAME, center, front, routeWaypoints, WALKWAY_PATH, isNearFixture, FIXTURE_PX_PER_FT } from "../data.js";
 
 // A short ruler in an empty floor corner (below column A, which never has a
 // fixture under it) — the one honest, literal scale reference on the map,
@@ -43,7 +43,9 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
   const path = highlightPath || [];
   const routedPts = [];
   if (path.length > 0) {
-    routedPts.push(center(path[0]));
+    // Front, not center — the line should never overlap into the first
+    // station's own box, same as every other point routeWaypoints returns.
+    routedPts.push(front(path[0]));
     for (let i = 1; i < path.length; i++) routedPts.push(...routeWaypoints(path[i - 1], path[i]));
   }
   // A protocol can revisit a station (just never on consecutive steps) — group step

@@ -14,6 +14,13 @@ export const BENCH_WIDTH_FT = 2.5;
 export const WALKWAY_WIDTH_FT = 6;
 export const BACK_AISLE_FT = 5;
 
+// Real feet aren't what changes here (see routeDistanceFt/benchToBenchFt) — a
+// technician doesn't walk hugging the exact edge of a bench, or cut across a
+// walkway's full width at an angle, either. Real floor-marked walking lanes
+// run down the middle: only the middle WALKWAY_LANE_FT of a walkway's own
+// WALKWAY_WIDTH_FT is ever actually walked on (see nearLaneX/routeWaypoints).
+export const WALKWAY_LANE_FT = 3;
+
 // Benches touch — there's no gap within a column (A1 touches A2 touches A3) or
 // between the two columns of a touching pair (B touches C, D touches E, F touches
 // G). The only open space on the floor is the 5 walkways: one between each of
@@ -36,6 +43,26 @@ const frontSide = (col) => (WALKWAY_GROUPS[groupOf(col)][0] === col ? "right" : 
 const walkwayCenterX = (g) => {
   const [l, r] = WALKWAY_GROUPS[g];
   return (COL_X[l] + SLOT_W + COL_X[r]) / 2;
+};
+
+// The walking lane's half-width in px, as the same fraction of the walkway's
+// pixel gap that WALKWAY_LANE_FT is of WALKWAY_WIDTH_FT in real feet.
+const laneHalfWidth = (g) => {
+  const [l, r] = WALKWAY_GROUPS[g];
+  const gapPx = COL_X[r] - (COL_X[l] + SLOT_W);
+  return (gapPx * WALKWAY_LANE_FT) / WALKWAY_WIDTH_FT / 2;
+};
+// The edge of the walking lane nearest a given column — the lane's left edge
+// for a column whose front faces right (it's the left half of its pair), the
+// lane's right edge for one whose front faces left. This is always the first
+// point of the lane a route from that column reaches, and it's always inside
+// the walkway's own (always-clear) gap, so a route can never do better than
+// aiming straight for it.
+const nearLaneX = (col) => {
+  const g = groupOf(col);
+  const half = laneHalfWidth(g);
+  const wx = walkwayCenterX(g);
+  return frontSide(col) === "right" ? wx - half : wx + half;
 };
 
 /* Fixed utility fixtures — baselines that never move. The sharps bin, recycling
@@ -199,11 +226,12 @@ for (const id in FIXTURES) CENTER_CACHE[id] = { x: FIXTURES[id].x + FIXTURES[id]
 export const center = (id) => CENTER_CACHE[id];
 
 // The point on a station's edge that actually opens onto its walkway — every
-// route starts and ends here, never at a raw straight line between two centers.
+// route starts and ends here, never overlapping into the station's own box.
 // A bench's front faces its walkway; the trio's front is its bottom edge (facing
 // the back walkway below it); the far pair's front is its top edge (facing the
-// back walkway above it).
-const front = (id) => {
+// back walkway above it). Exported so LabMap.jsx can anchor a highlighted
+// path's very first point here too, instead of at the first station's center.
+export const front = (id) => {
   if (isNearFixture(id)) { const f = FIXTURES[id]; return { x: f.x + f.w / 2, y: f.y + f.h }; }
   if (isFarFixture(id)) { const f = FIXTURES[id]; return { x: f.x + f.w / 2, y: f.y }; }
   const r = SLOTS[id], c = center(id);
@@ -380,46 +408,58 @@ const toRailPoints = (id) => {
   if (isFixtureId(id)) return [f, rp];
   return [f, { x: rp.x, y: f.y }, rp];
 };
-// [bottom-of-rail, ...intermediate points..., front(id), center(id)] — the
-// mirror image of toRailPoints, walking in from the rail's bottom edge (the
-// edge nearest the sink/consumables/refrigerator row) to a station. Entering
-// at the top on one side of a crossing and leaving from the bottom on the
-// other (see routeWaypoints) is what turns the rail crossing itself into a
-// diagonal instead of a dead-level line, while staying entirely inside the
-// rail's own open rectangle the whole way.
+// [bottom-of-rail, ...intermediate points..., front(id)] — the mirror image
+// of toRailPoints, walking in from the rail's bottom edge (the edge nearest
+// the sink/consumables/refrigerator row) to a station, ending at its front —
+// never overlapping into the station's own box. Entering at the top on one
+// side of a crossing and leaving from the bottom on the other (see
+// routeWaypoints) is what turns the rail crossing itself into a diagonal
+// instead of a dead-level line, while staying entirely inside the rail's own
+// open rectangle the whole way.
 const fromRailPoints = (id) => {
-  const f = front(id), c = center(id);
+  const f = front(id);
   const rp = railPoint(id, BACK_AISLE_BOTTOM);
-  if (isFixtureId(id)) return [rp, f, c];
-  return [rp, { x: rp.x, y: f.y }, f, c];
+  if (isFixtureId(id)) return [rp, f];
+  return [rp, { x: rp.x, y: f.y }, f];
 };
 
-/* Pixel waypoints for drawing the same route on the SVG map, mirroring
-   routeDistanceFt's shapes: same-walkway/different-column benches on the same
-   or an adjacent row cut straight across the walkway between their centers;
-   same-column benches (and different-column benches two rows apart, where a
-   direct line would clip the row in between) walk the shared front edge in a
-   straight line instead; everything else routes via the back-walkway rail,
-   including the trio, for simplicity — even though reaching (say) B3 from
-   SHARPS is numerically a same-column reach in feet, the drawn path still
-   shows it crossing the rail, which stays visually consistent with every
-   other fixture-involving route rather than special-casing one more shape. A
-   rail crossing enters at the rail's top edge on one side and leaves from its
-   bottom edge on the other (toRailPoints/fromRailPoints), so the crossing
-   itself is a diagonal rather than a dead-level line, exactly like the
-   walkway case, while staying inside the rail's own open rectangle
-   throughout. Returns the points *after* the start (the caller already has
-   the previous station's center), so consecutive legs of a multi-step path
-   concatenate directly into one continuous line. */
+/* Pixel waypoints for drawing the same route on the SVG map — deliberately
+   decoupled from routeDistanceFt's numbers (which keep scoring the full
+   walkway/aisle rectangle a diagonal can use; see benchToBenchFt/
+   benchToFarFt above), because a technician doesn't actually walk hugging a
+   bench's exact edge or cutting a walkway at a raw angle. Every route starts
+   and ends at a station's front, never its center — never overlapping the
+   station's own box — and, wherever it uses a walkway or the back-walkway
+   rail, funnels through the middle WALKWAY_LANE_FT of it (nearLaneX) rather
+   than the walkway's full width, the way a real floor-marked walking lane
+   would: go to the closest point of that lane, then as directly as possible
+   (a single diagonal, if the rows/rail edges differ) to the point of it
+   closest to the next station, then out to that station's front.
+
+   Two benches sharing a walkway (same column, or the two columns of a pair,
+   any combination of rows) route this way directly: front -> nearest lane
+   edge for that column -> nearest lane edge for the other column -> front.
+   This is safe for every row combination, including two rows apart, because
+   both "front" points already sit exactly on the walkway's boundary — the
+   whole line from one to the other never re-enters either column's width, so
+   there's no bench left to clip (verified exhaustively, for every real bench
+   pair, in data.test.js). Everything else — different walkways, or anything
+   touching a fixture, including the trio for simplicity — routes via the
+   back-walkway rail, entering at its top edge on one side and leaving from
+   its bottom edge on the other (toRailPoints/fromRailPoints), which is what
+   makes that crossing a diagonal too rather than a dead-level line, while
+   staying inside the rail's own open rectangle throughout.
+
+   Returns the points *after* the start (the caller already has the previous
+   station's front), so consecutive legs of a multi-step path concatenate
+   directly into one continuous line. */
 export function routeWaypoints(aId, bId) {
   if (!isFixtureId(aId) && !isFixtureId(bId)) {
     const gA = groupOf(aId[0]), gB = groupOf(bId[0]);
     if (gA === gB) {
-      if (aId[0] === bId[0]) return [front(aId), front(bId), center(bId)];
-      if (Math.abs(rowOf(aId) - rowOf(bId)) <= 1) return [center(bId)];
-      const wx = walkwayCenterX(gA);
       const fA = front(aId), fB = front(bId);
-      return [fA, { x: wx, y: fA.y }, { x: wx, y: fB.y }, fB, center(bId)];
+      const nearA = nearLaneX(aId[0]), nearB = nearLaneX(bId[0]);
+      return [fA, { x: nearA, y: fA.y }, { x: nearB, y: fB.y }, fB];
     }
   }
   return [...toRailPoints(aId), ...fromRailPoints(bId)];
