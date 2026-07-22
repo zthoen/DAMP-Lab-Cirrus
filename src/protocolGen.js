@@ -23,15 +23,66 @@ function farthestStation(stations, from, avoid) {
   return pool.reduce((best, s) => (BENCH_DIST_FT[from][s] > BENCH_DIST_FT[from][best] ? s : best), pool[0]);
 }
 
-function travelFtOf(steps) {
+function travelFtOfPath(path) {
   let ft = 0;
-  for (let i = 1; i < steps.length; i++) ft += BENCH_DIST_FT[steps[i - 1].station][steps[i].station];
+  for (let i = 1; i < path.length; i++) ft += BENCH_DIST_FT[path[i - 1]][path[i]];
   return Math.round(ft);
 }
 
-const asProtocol = (id, steps) => ({
-  id, steps, stationsVisited: new Set(steps.map((s) => s.station)).size, travelFt: travelFtOf(steps),
-});
+// Chunks a flat run of substeps into the same Step/Substep shape
+// protocolImport.js parses a real pasted protocol into — a "Prep" step for the
+// open-pool retrieval substeps (if any), a "Cleanup" step for the close-pool
+// disposal substeps (if any), and the walk in between split into "Procedure"
+// step(s) of a random size (2-4 substeps, drawn from the same seeded stream as
+// everything else) rather than one single undifferentiated block. A protocol
+// with no bookends at all (the coverage protocol, or one whose table has no
+// equipment mapped to any pool station) is just "Procedure" chunks start to
+// finish.
+function groupIntoSteps(rng, flatSubsteps, openLen, closeLen) {
+  const groups = [];
+  let i = 0;
+  if (openLen > 0) { groups.push({ name: "Prep", entries: flatSubsteps.slice(0, openLen) }); i = openLen; }
+
+  const middleEnd = flatSubsteps.length - closeLen;
+  const procedureChunks = [];
+  while (i < middleEnd) {
+    const size = Math.min(middleEnd - i, randInt(rng, 2, 4));
+    procedureChunks.push(flatSubsteps.slice(i, i + size));
+    i += size;
+  }
+  procedureChunks.forEach((entries, idx) => {
+    groups.push({ name: procedureChunks.length > 1 ? `Procedure ${idx + 1}` : "Procedure", entries });
+  });
+
+  if (closeLen > 0) groups.push({ name: "Cleanup", entries: flatSubsteps.slice(middleEnd) });
+
+  return groups.map((g, idx) => {
+    const number = idx + 1;
+    const substeps = g.entries.map((e, j) => ({ label: `${number}.${j + 1}`, ...e }));
+    const path = substeps.map((s) => s.station);
+    return { number, name: g.name, substeps, path, stationsVisited: new Set(path).size, travelFt: travelFtOfPath(path) };
+  });
+}
+
+// Groups a protocol's flat substep sequence into Steps (see groupIntoSteps),
+// then derives the whole-protocol totals the same way protocolImport.js does:
+// fullPath/fullStationsVisited/fullTravelFt over the single concatenated
+// route (not summed from each step's own smaller total, so it also counts the
+// walk from one step's last station to the next step's first), and stepLinks
+// — one [lastStationOfStep, firstStationOfNextStep] pair per step boundary —
+// for LabMap.jsx's dashed hand-off overlay.
+function asProtocol(id, flatSubsteps, openLen, closeLen, rng) {
+  const steps = groupIntoSteps(rng, flatSubsteps, openLen, closeLen);
+  const fullPath = steps.flatMap((s) => s.path);
+  const fullStationsVisited = new Set(fullPath).size;
+  const fullTravelFt = travelFtOfPath(fullPath);
+  const stepLinks = [];
+  for (let i = 1; i < steps.length; i++) {
+    const prevPath = steps[i - 1].path, nextPath = steps[i].path;
+    if (prevPath.length && nextPath.length) stepLinks.push([prevPath[prevPath.length - 1], nextPath[0]]);
+  }
+  return { id, steps, fullPath, fullStationsVisited, fullTravelFt, stepLinks };
+}
 
 // A random-length (1..N), random-order, no-repeat subset of `pool`, restricted
 // to whichever members actually have equipment mapped to them — this is how
@@ -50,11 +101,20 @@ function pickPoolSubset(rng, stationEquip, pool) {
   return shuffled.slice(0, randInt(rng, 1, shuffled.length));
 }
 
-/* Generates `count` fake protocols, each a variable-length sequence of steps. Each
-   step's type (Read/Write) is determined by the equipment itself, not drawn at
-   random — see stepType.js. Seeded so the same equipment-to-station mapping and
-   the same seed always produce the same protocols, regardless of what row order
-   the equipment happened to be pasted in — so two people who paste an equivalent
+/* Generates `count` fake protocols, each a variable-length sequence of substeps
+   grouped into Steps — the same Step/Substep shape protocolImport.js parses a
+   real pasted protocol into (see groupIntoSteps/asProtocol below), so the two
+   tabs' protocols read the same way: a `steps` array (each with its own
+   `substeps`, `path`, `stationsVisited`, `travelFt`), plus whole-protocol
+   `fullPath`/`fullStationsVisited`/`fullTravelFt` and `stepLinks` for
+   LabMap.jsx's dashed step-to-step overlay. `minSteps`/`maxSteps` still count
+   substeps (the individual station visits), not the coarser Step groups —
+   unchanged from before this grouping existed, just relabeled "substeps" in
+   the UI for accuracy. Each substep's type (Read/Write) is determined by the
+   equipment itself, not drawn at random — see stepType.js. Seeded so the same
+   equipment-to-station mapping and the same seed always produce the same
+   protocols, regardless of what row order the equipment happened to be pasted
+   in — so two people who paste an equivalent
    table (same equipment, same stations, any row order) and use the same seed get
    back an identical, sharable list of protocols.
 
@@ -206,17 +266,17 @@ export function generateProtocols(equipToStations, opts = {}) {
       prevEquip = equip;
     }
 
-    protocols.push(asProtocol(`Protocol ${p + 1}`, steps));
+    protocols.push(asProtocol(`Protocol ${p + 1}`, steps, openStations.length, closeStations.length, rng));
   }
 
-  const visited = new Set(protocols.flatMap((p) => p.steps.map((s) => s.station)));
+  const visited = new Set(protocols.flatMap((p) => p.fullPath));
   const missedFixtures = FIXTURE_IDS.filter((f) => stationEquip[f]?.length && !visited.has(f));
   if (missedFixtures.length > 0) {
     const steps = missedFixtures.map((station) => {
       const equip = stationEquip[station][0];
       return { equipment: equip, station, action: classifyStepType(equip) };
     });
-    protocols.push(asProtocol(`Protocol ${protocols.length + 1}`, steps));
+    protocols.push(asProtocol(`Protocol ${protocols.length + 1}`, steps, 0, 0, rng));
   }
 
   return { protocols, warnings };

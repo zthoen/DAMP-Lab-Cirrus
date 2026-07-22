@@ -222,8 +222,8 @@ name is shown.
 
 **Protocol generation (`src/protocolGen.js`)** — `generateProtocols(equipToStations,
 opts)` builds `count` fake protocols, each a random-length (`minSteps`–`maxSteps`)
-sequence of steps. Each step's type (Read or Write) is deterministic, not random —
-`classifyStepType` (`src/stepType.js`) keyword-matches the equipment name
+sequence of substeps. Each substep's type (Read or Write) is deterministic, not
+random — `classifyStepType` (`src/stepType.js`) keyword-matches the equipment name
 (readers/scopes/balances/etc. → Write, since there's a measurement to record;
 centrifuges/shakers/incubators/etc. → Read, since there's nothing to write down).
 Everything else is drawn from a `mulberry32` seeded stream (`src/rng.js`) so the
@@ -233,10 +233,26 @@ list every random pick indexes into) is `Object.keys(equipToStationsFull).sort()
 not raw insertion order, specifically so two people pasting an equivalent table in
 a different row order and using the same seed get back the identical list of
 protocols — a shareable seed wouldn't mean much if it only reproduced for the
-exact paste that generated it. Each generated protocol carries its step list plus
-`stationsVisited` and `travelFt` (summed `BENCH_DIST_FT` across the sequence, in
-feet) so "does this actually force movement" is directly visible. Protocols are
-titled `Protocol 1`, `Protocol 2`, etc. in generation order.
+exact paste that generated it. `minSteps`/`maxSteps` still count individual
+substeps (station visits), the same quantity they always have — the option names
+are unchanged even though the UI now labels them "substeps" (see below). Protocols
+are titled `Protocol 1`, `Protocol 2`, etc. in generation order.
+
+`asProtocol`/`groupIntoSteps` then reshape that flat substep sequence into the
+same Step/Substep shape `protocolImport.js` parses a real pasted protocol into,
+so a generated protocol and a real one read identically in the UI: a `steps`
+array (each with its own `number`, `name`, `substeps`, `path`, `stationsVisited`,
+`travelFt`), whole-protocol `fullPath`/`fullStationsVisited`/`fullTravelFt`, and
+`stepLinks` (one `[lastStationOfStep, firstStationOfNextStep]` pair per step
+boundary, for `LabMap.jsx`'s dashed hand-off overlay — see `ProtocolImportTab.jsx`
+below for what that overlay is). The open-pool retrieval substeps (if any) become
+one `"Prep"` step; the close-pool disposal substeps (if any) become one
+`"Cleanup"` step, last; everything drawn by the middle random walk in between is
+split into `"Procedure"` step(s) of a random size (2–4 substeps, drawn from the
+same seeded stream as everything else — a protocol with no bookends at all, like
+the coverage protocol below, is just `"Procedure"` chunks start to finish) rather
+than one single undifferentiated block. A lone middle step is named `"Procedure"`;
+more than one gets numbered (`"Procedure 1"`, `"Procedure 2"`, ...).
 
 Every protocol is bookended *if the loaded equipment supports it*: it opens with
 some combination of Glassware/Consumables 1/Consumables 2 steps (`OPEN_POOL`) and
@@ -479,14 +495,24 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   `ProtocolImportTab.jsx` below), which is intentionally session-scoped instead.
 - `LabBuilderTab.jsx` (tab label "Equipment Input"): the paste textarea, row-error
   list, and the `LabMap.jsx` render of the resulting station/equipment layout.
-- `ProtocolGeneratorTab.jsx` (tab label "Protocol Generator"): controls for protocol count / min-max steps / seed, a
-  "Generate" button, and a column of cards per generated protocol (station/equipment/
-  Read-or-Write type per step) beside a larger `LabMap.jsx` — the map is the point of
-  the page, so it gets the majority of the width. Each step's Station column shows
-  `STATION_NAME[s.station]` (with the full name as a `title` tooltip if it's
-  truncated) rather than the internal id — a technician reading the card should
-  never need to know a bench is "A3" to recognize it's "Hamilton". Selecting a
-  protocol highlights its routed bench-to-bench path via the `highlightPath` prop.
+- `ProtocolGeneratorTab.jsx` (tab label "Protocol Generator"): controls for protocol
+  count / min-max *substeps* / seed, a "Generate" button, and a column of one card
+  per generated protocol beside a larger `LabMap.jsx` — the map is the point of the
+  page, so it gets the majority of the width. Two independent layers of selection,
+  mirroring `ProtocolImportTab.jsx` below: `selectedId` picks *which protocol*
+  (clicking a collapsed `ProtocolCard`'s header expands it in place — an unselected
+  card just shows a one-line summary, never its own step breakdown, to keep 8+
+  generated protocols from turning into an unreadable wall of tables) and
+  `selectedStepKey` (reset to `FULL_KEY` every time `selectedId` changes, since a
+  step number selected under the *previous* protocol has no meaning here) picks
+  *which of that protocol's steps* — "Full Protocol" or `Step N`, each rendered the
+  same way `ProtocolImportTab.jsx`'s own Full Protocol/Step cards are (down to
+  reusing `StepTable` for a step's substeps), including `stepLinks`/
+  `onStepComplete` wiring so the walking-technician preview and step auto-advance
+  work identically here. Each substep's Station column shows `STATION_NAME[s.station]`
+  (with the full name as a `title` tooltip if it's truncated) rather than the
+  internal id — a technician reading the card should never need to know a bench is
+  "A3" to recognize it's "Hamilton".
 - `LabMap.jsx`: pure rendering component — takes `stationEquip` (and optionally
   `highlightPath`, an ordered list of station ids) and draws the 24-bench SVG grid
   plus all 5 walkways as plain unlabeled open lanes. Every bench/fixture label comes
@@ -555,11 +581,14 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   skipping the just-selected step before it's ever shown, faster than a
   render. Folding both checks into one effect means a `pathKey` change always
   resets and returns *before* any completion check runs, so it never sees
-  stale `elapsed` paired with a fresh `timeline`. The Protocol Generator tab
-  never passes `stepLinks`/`onStepComplete` at all, since its protocols are
-  flat step lists with no step/substep grouping to have a boundary in the
-  first place. This is the only state `LabMap.jsx` owns otherwise; it's a
-  pure render of whatever's in the parsed table. A busy badge (many revisits, e.g.
+  stale `elapsed` paired with a fresh `timeline`. Both `ProtocolImportTab.jsx`
+  and `ProtocolGeneratorTab.jsx` pass `stepLinks`/`onStepComplete` — a
+  generated protocol has the same Step/Substep grouping as a real pasted one
+  (see `protocolGen.js`), so there's a boundary to draw in both places; the
+  Lab Optimizer's heat-mapped pair of maps is the one caller that never
+  passes `highlightPath` at all, so `stepLinks`/`onStepComplete` never come
+  up there regardless. This is the only state `LabMap.jsx` owns otherwise;
+  it's a pure render of whatever's in the parsed table. A busy badge (many revisits, e.g.
   Consumables in a long real protocol) would otherwise grow one wide pill that
   overlaps its neighbors — instead `wrapStepNums` packs the step numbers into as
   few comma-joined rows as fit a safe per-row width (font size also steps down as
