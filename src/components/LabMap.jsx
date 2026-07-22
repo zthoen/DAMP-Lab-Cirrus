@@ -1,6 +1,47 @@
-import React from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { VIEW_W, VIEW_H, C, MONO, wrapLabel, mixHex } from "../constants.js";
 import { SLOTS, FIXTURES, STATION_IDS, STATION_NAME, center, front, routeWaypoints, WALKWAY_PATH, isNearFixture, FIXTURE_PX_PER_FT } from "../data.js";
+
+// How the walking-technician preview moves: it pauses PAUSE_MS at every
+// station visit (including revisits) and travels between stations at a fixed
+// pixel speed, so a longer walk between two benches takes proportionally
+// longer to animate than a short hop.
+const PAUSE_MS = 2000;
+const TRAVEL_PX_PER_SEC = 140;
+
+const polylineLength = (pts) => {
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  return len;
+};
+const pointAtDistance = (pts, dist) => {
+  let remaining = dist;
+  for (let i = 1; i < pts.length; i++) {
+    const segLen = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    if (remaining <= segLen || i === pts.length - 1) {
+      const t = segLen === 0 ? 0 : Math.min(1, remaining / segLen);
+      return { x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * t, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * t };
+    }
+    remaining -= segLen;
+  }
+  return pts[pts.length - 1];
+};
+
+// A "pause at this station" event followed by a "travel to the next station"
+// event, alternating for every step of the path — mirrors exactly how
+// routedPts below is built (front of the first station, then each leg's
+// routeWaypoints), so the dot always sits exactly on the drawn line.
+function buildTimeline(path) {
+  if (path.length === 0) return { events: [], totalMs: 0 };
+  const events = [{ type: "pause", point: front(path[0]), duration: PAUSE_MS }];
+  for (let i = 1; i < path.length; i++) {
+    const legPts = [front(path[i - 1]), ...routeWaypoints(path[i - 1], path[i])];
+    const length = polylineLength(legPts);
+    events.push({ type: "travel", pts: legPts, length, duration: Math.max(200, (length / TRAVEL_PX_PER_SEC) * 1000) });
+    events.push({ type: "pause", point: front(path[i]), duration: PAUSE_MS });
+  }
+  return { events, totalMs: events.reduce((s, e) => s + e.duration, 0) };
+}
 
 // A short ruler in an empty floor corner (below column A, which never has a
 // fixture under it) — the one honest, literal scale reference on the map,
@@ -54,6 +95,64 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
   const stepsByStation = {};
   path.forEach((id, i) => (stepsByStation[id] ??= []).push(i + 1));
 
+  // Keyed on the path's contents, not its array identity — the parent tab
+  // rebuilds this array every render (e.g. on hover), which would otherwise
+  // reset playback constantly.
+  const pathKey = path.join("|");
+  const timeline = useMemo(() => buildTimeline(path), [pathKey]);
+
+  const [elapsed, setElapsed] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const rafRef = useRef(null);
+  const lastTsRef = useRef(null);
+  const lastKeyRef = useRef(pathKey);
+
+  useEffect(() => {
+    if (lastKeyRef.current !== pathKey) {
+      lastKeyRef.current = pathKey;
+      setElapsed(0);
+      setPlaying(false);
+    }
+  }, [pathKey]);
+
+  useEffect(() => {
+    if (!playing) return undefined;
+    lastTsRef.current = null;
+    const tick = (ts) => {
+      if (lastTsRef.current == null) lastTsRef.current = ts;
+      const dt = ts - lastTsRef.current;
+      lastTsRef.current = ts;
+      setElapsed((prev) => {
+        const next = prev + dt;
+        if (next >= timeline.totalMs) { setPlaying(false); return timeline.totalMs; }
+        return next;
+      });
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [playing, timeline]);
+
+  const handlePlay = () => {
+    if (timeline.totalMs === 0) return;
+    if (elapsed >= timeline.totalMs) setElapsed(0);
+    setPlaying(true);
+  };
+  const handlePause = () => setPlaying(false);
+
+  let dotPoint = null;
+  if (timeline.events.length > 0) {
+    let t = elapsed;
+    for (const ev of timeline.events) {
+      if (t <= ev.duration) {
+        dotPoint = ev.type === "pause" ? ev.point : pointAtDistance(ev.pts, (t / ev.duration) * ev.length);
+        break;
+      }
+      t -= ev.duration;
+    }
+    if (!dotPoint) dotPoint = timeline.events[timeline.events.length - 1].point;
+  }
+
   const benchBox = (id, r) => {
     const equip = stationEquip[id] || [];
     const isHov = hoverSlot === id;
@@ -101,6 +200,15 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
 
   return (
     <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, position: "relative" }}>
+      {path.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <button className="lbtn primary" disabled={playing} onClick={handlePlay}>▶ Play</button>
+          <button className="lbtn" disabled={!playing} onClick={handlePause}>⏸ Pause</button>
+          <span style={{ fontSize: 11, color: C.muted, fontFamily: MONO }}>
+            walking-technician preview · pauses {PAUSE_MS / 1000}s per station
+          </span>
+        </div>
+      )}
       <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} style={{ width: "100%", display: "block" }} onMouseLeave={() => setHoverSlot(null)}>
         <rect x={0} y={0} width={VIEW_W} height={VIEW_H} rx={10} fill={C.floor} />
         {/* Walkways are drawn as one continuous open lane, unlabeled — the floor plan
@@ -121,6 +229,9 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
 
         {routedPts.length > 1 && (
           <polyline points={routedPts.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke={C.teal} strokeWidth={2} opacity={0.9} />
+        )}
+        {dotPoint && (
+          <circle cx={dotPoint.x} cy={dotPoint.y} r={7} fill={C.amber} stroke="#0a1017" strokeWidth={1.5} />
         )}
         {Object.entries(stepsByStation).map(([id, nums]) => {
           const p = center(id);

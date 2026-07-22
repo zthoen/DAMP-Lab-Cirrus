@@ -75,17 +75,15 @@ pixel path — deliberately *decoupled* from the feet numbers above rather than
 mirroring them exactly, because a technician doesn't actually walk hugging a bench's
 raw edge or cutting a walkway at a raw angle. Every drawn route starts and ends at a
 station's front, never its center (`front(id)`, exported for this), so the line
-never overlaps into a station's own box. Wherever it uses a walkway or the
-back-walkway rail, it funnels through only the middle `WALKWAY_LANE_FT` (~3ft) of
-the walkway's own `WALKWAY_WIDTH_FT` (~6ft) — a `nearLaneX` helper picks whichever
-edge of that narrower lane is closest to a given column — the way a real
-floor-marked walking lane would, rather than the walkway's full width:
+never overlaps into a station's own box. A route doesn't need to be funneled through
+a walkway's exact middle, though — it isn't a floor-marked lane narrower than the
+walkway itself:
 - **Same walkway** (same column, or two different columns of a pair — any
-  combination of rows, including two rows apart): front → nearest lane edge for that
-  column → nearest lane edge for the other column → front. This is safe for every
-  row combination, not just adjacent ones, because both "front" points already sit
-  exactly on the walkway's boundary, so the whole line between them never re-enters
-  either column's width — there's no bench left to clip.
+  combination of rows, including two rows apart): a direct line, front to front,
+  with nothing in between. This is safe for every row combination, not just adjacent
+  ones, because both "front" points already sit exactly on the walkway's boundary, so
+  the line between them never re-enters either column's width — there's no bench left
+  to clip.
 - **Different walkways, or anything touching a fixture** (including the trio,
   aliased to its anchor column's row-3 bench for visual consistency even though
   that's numerically a same-column reach in feet) routes via the back-walkway rail
@@ -498,11 +496,22 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   key for a gradient bar between "0 visits" and the busiest station's count. A
   multi-step `highlightPath` starts at the first station's *front* (`front(path[0])`,
   never its center) and is expanded through `routeWaypoints` per consecutive pair into
-  one continuous **solid** line — always front-to-front, funneled through the middle
-  of whatever walkway or rail crossing it uses — never a dashed line, never one
-  overlapping into a station's own box. A station revisited
-  by non-consecutive steps gets one merged "1,3"-style badge instead of a second
-  marker silently overlapping the first. A busy badge (many revisits, e.g.
+  one continuous **solid** line — always front-to-front, direct wherever a walkway
+  or rail crossing allows it, never funneled through the middle of one first —
+  never a dashed line, never one overlapping into a station's own box. A station
+  revisited by non-consecutive steps gets one merged "1,3"-style badge instead of a
+  second marker silently overlapping the first. Whenever a non-empty `highlightPath`
+  is passed, `LabMap.jsx` also renders a **walking-technician preview**: an animated
+  dot plus Play/Pause buttons that walks the same route, pausing `PAUSE_MS` (2s) at
+  every station visit (including revisits) and traveling between them at a fixed
+  pixel speed (`TRAVEL_PX_PER_SEC`) so a longer walk animates for proportionally
+  longer. Play resumes from wherever the dot currently sits (or restarts from
+  station 1 if the animation already finished); Pause freezes it in place. The
+  animation timeline is keyed off the path's *contents* (`path.join("|")`), not its
+  array identity, since the parent tab passes a freshly-built array on every render
+  (e.g. on hover) — keying on identity would otherwise reset playback constantly.
+  This is the only state `LabMap.jsx` owns otherwise; it's a pure render of
+  whatever's in the parsed table. A busy badge (many revisits, e.g.
   Consumables in a long real protocol) would otherwise grow one wide pill that
   overlaps its neighbors — instead `wrapStepNums` packs the step numbers into as
   few comma-joined rows as fit a safe per-row width (font size also steps down as
@@ -514,7 +523,7 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   is stylized for legibility, not drawn to that same scale, so a text line
   spelling out several "~Nft" figures for different parts of the floor would
   overstate how precise any of it is; one honest "5 ft" tick mark is what's here
-  instead. Has no simulation state; it only knows what's in the parsed table.
+  instead.
 - `ProtocolImportTab.jsx` (tab label "Protocol Visualizer"): the paste textarea
   for a real protocol, an `ErrorList`, and a column of cards beside a `LabMap.jsx`
   — a summary card for the whole protocol (selected by default, titled from
@@ -576,11 +585,12 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   `protocolImport.js`, and `labOptimizer.js` are the places with actual logic; all
   have an `npm test` suite — run it after changing any of them. UI changes should
   also be verified with `npm run dev` (paste a table, confirm the map renders,
-  generate protocols, confirm consecutive steps land on different benches and the
-  highlighted path only ever travels through a walkway, never straight through a
-  bench; on the Lab Optimizer tab, confirm the "optimized" map's relabeled benches
-  and (when it recommends one) relocated trio box actually match `moves`/
-  `anchorChanged`).
+  generate protocols, confirm consecutive steps land on different benches, the
+  highlighted path never cuts through a bench, and the walking-technician dot's
+  Play/Pause buttons animate/freeze it correctly on both the Protocol Generator and
+  Protocol Visualizer tabs; on the Lab Optimizer tab, confirm the "optimized" map's
+  relabeled benches and (when it recommends one) relocated trio box actually match
+  `moves`/`anchorChanged`).
 - Protocol generation is seeded (`mulberry32` in `src/rng.js`, user-controlled via
   the Protocol Generator's `seed` field) so the same table + settings + seed
   always produce the same output. The Lab Optimizer's search also runs on

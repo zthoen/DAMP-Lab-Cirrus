@@ -2,15 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   routeDistanceFt, routeWaypoints, BENCH_DIST_FT, STATION_IDS, STATION_NAME, NAME_TO_STATION_ID, center, front, FIXTURES,
-  WALKWAY_WIDTH_FT, WALKWAY_LANE_FT, BACK_AISLE_FT, BENCH_LEN_FT, BENCH_WIDTH_FT, SLOTS, isFixtureId,
+  WALKWAY_WIDTH_FT, BACK_AISLE_FT, BENCH_LEN_FT, BENCH_WIDTH_FT, SLOTS, isFixtureId,
   TOUCHING_PAIRS, DEFAULT_TRIO_ANCHOR, nearFixturesForAnchor, trioFixturesForAnchor, buildDistTable, DIST_TABLES_BY_ANCHOR,
 } from "../src/data.js";
 
 // Liang-Barsky segment/AABB clipping — true only for a real, nonzero-length
 // crossing through `rect`'s interior, not a segment that merely touches a
 // corner or edge. Used below to independently prove the diagonal routes never
-// cut through a bench that isn't one of the route's own two endpoints.
+// cut through a bench that isn't one of the route's own two endpoints. The
+// rect is shrunk inward by a hair first — a front-to-front route legitimately
+// runs exactly along a bench's own edge (e.g. two same-column stations share
+// that column's boundary with its walkway the whole way), which is walking
+// the walkway's own open edge, not entering the bench, so it shouldn't count.
 function segmentCrossesRect(p0, p1, rect) {
+  const EPS = 0.5;
+  const rx = rect.x + EPS, ry = rect.y + EPS, rw = rect.w - 2 * EPS, rh = rect.h - 2 * EPS;
   const dx = p1.x - p0.x, dy = p1.y - p0.y;
   let tmin = 0, tmax = 1;
   const clip = (p, q) => {
@@ -20,10 +26,10 @@ function segmentCrossesRect(p0, p1, rect) {
     else { if (r < tmin) return false; if (r < tmax) tmax = r; }
     return true;
   };
-  if (!clip(-dx, p0.x - rect.x)) return false;
-  if (!clip(dx, rect.x + rect.w - p0.x)) return false;
-  if (!clip(-dy, p0.y - rect.y)) return false;
-  if (!clip(dy, rect.y + rect.h - p0.y)) return false;
+  if (!clip(-dx, p0.x - rx)) return false;
+  if (!clip(dx, rx + rw - p0.x)) return false;
+  if (!clip(-dy, p0.y - ry)) return false;
+  if (!clip(dy, ry + rh - p0.y)) return false;
   return tmin < tmax;
 }
 
@@ -105,38 +111,16 @@ test("routeWaypoints starts and ends every same-walkway route at the two station
   }
 });
 
-test("routeWaypoints funnels a same-walkway route through the middle WALKWAY_LANE_FT of the walkway, not its full width", () => {
-  const gapPx = SLOTS.B1.x - (SLOTS.A1.x + SLOTS.A1.w);
-  const laneHalfPx = (gapPx * WALKWAY_LANE_FT) / WALKWAY_WIDTH_FT / 2;
-  const laneCenterX = (SLOTS.A1.x + SLOTS.A1.w + SLOTS.B1.x) / 2;
-  assert.ok(WALKWAY_LANE_FT < WALKWAY_WIDTH_FT, "the lane should be narrower than the walkway itself");
-
+test("routeWaypoints routes a same-walkway pair directly front to front, no detour through the walkway's middle", () => {
+  // Just the two fronts — no intermediate lane-entry/exit points.
   const pts = routeWaypoints("A1", "B2");
-  // A (left column, front faces right) enters at the lane's near/left edge;
-  // B (right column, front faces left) is reached via the lane's near/right
-  // edge — never the walkway's raw outer boundary on either side.
-  assert.equal(pts[1].x, laneCenterX - laneHalfPx);
-  assert.equal(pts[2].x, laneCenterX + laneHalfPx);
-  assert.ok(pts[1].x > pts[0].x, "should step inward from A's own edge to reach the lane, not walk its raw edge");
-  assert.ok(pts[2].x < pts[3].x, "should leave the lane before reaching B's own edge, not walk its raw edge");
+  assert.deepEqual(pts, [front("A1"), front("B2")]);
 });
 
-test("routeWaypoints goes to the closest point of the lane, then as directly as possible to the next station", () => {
-  // "Closest": entering from the front, the very next point is already inside
-  // the lane — no detour past it and back. "As directly as possible": from
-  // there to the point of the lane nearest the destination is a single
-  // segment (no extra bends), then straight out to the destination's front.
-  const pts = routeWaypoints("A1", "B2");
-  assert.equal(pts.length, 4, "front -> lane entry -> lane exit -> front, nothing more");
-});
-
-test("routeWaypoints keeps a same-column move inside the lane too — both ends use the same near edge", () => {
+test("routeWaypoints keeps a same-column move a straight vertical line between the two fronts", () => {
   const pts = routeWaypoints("A1", "A3");
-  assert.deepEqual(pts[pts.length - 1], front("A3"));
-  // Same column means the same "near" side of the lane on both ends, so the
-  // middle of the path is a single straight vertical run inside the lane.
-  assert.equal(pts[1].x, pts[2].x);
-  assert.notEqual(pts[1].x, pts[0].x, "should still step off A1's own edge into the lane");
+  assert.deepEqual(pts, [front("A1"), front("A3")]);
+  assert.equal(pts[0].x, pts[1].x);
 });
 
 test("every same-walkway route (any two columns, any two rows) avoids every other bench's box", () => {

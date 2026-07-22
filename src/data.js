@@ -14,13 +14,6 @@ export const BENCH_WIDTH_FT = 2.5;
 export const WALKWAY_WIDTH_FT = 6;
 export const BACK_AISLE_FT = 5;
 
-// Real feet aren't what changes here (see routeDistanceFt/benchToBenchFt) — a
-// technician doesn't walk hugging the exact edge of a bench, or cut across a
-// walkway's full width at an angle, either. Real floor-marked walking lanes
-// run down the middle: only the middle WALKWAY_LANE_FT of a walkway's own
-// WALKWAY_WIDTH_FT is ever actually walked on (see nearLaneX/routeWaypoints).
-export const WALKWAY_LANE_FT = 3;
-
 // Benches touch — there's no gap within a column (A1 touches A2 touches A3) or
 // between the two columns of a touching pair (B touches C, D touches E, F touches
 // G). The only open space on the floor is the 5 walkways: one between each of
@@ -43,26 +36,6 @@ const frontSide = (col) => (WALKWAY_GROUPS[groupOf(col)][0] === col ? "right" : 
 const walkwayCenterX = (g) => {
   const [l, r] = WALKWAY_GROUPS[g];
   return (COL_X[l] + SLOT_W + COL_X[r]) / 2;
-};
-
-// The walking lane's half-width in px, as the same fraction of the walkway's
-// pixel gap that WALKWAY_LANE_FT is of WALKWAY_WIDTH_FT in real feet.
-const laneHalfWidth = (g) => {
-  const [l, r] = WALKWAY_GROUPS[g];
-  const gapPx = COL_X[r] - (COL_X[l] + SLOT_W);
-  return (gapPx * WALKWAY_LANE_FT) / WALKWAY_WIDTH_FT / 2;
-};
-// The edge of the walking lane nearest a given column — the lane's left edge
-// for a column whose front faces right (it's the left half of its pair), the
-// lane's right edge for one whose front faces left. This is always the first
-// point of the lane a route from that column reaches, and it's always inside
-// the walkway's own (always-clear) gap, so a route can never do better than
-// aiming straight for it.
-const nearLaneX = (col) => {
-  const g = groupOf(col);
-  const half = laneHalfWidth(g);
-  const wx = walkwayCenterX(g);
-  return frontSide(col) === "right" ? wx - half : wx + half;
 };
 
 /* Fixed utility fixtures — baselines that never move. The sharps bin, recycling
@@ -430,22 +403,16 @@ const fromRailPoints = (id) => {
    benchToFarFt above), because a technician doesn't actually walk hugging a
    bench's exact edge or cutting a walkway at a raw angle. Every route starts
    and ends at a station's front, never its center — never overlapping the
-   station's own box — and, wherever it uses a walkway or the back-walkway
-   rail, funnels through the middle WALKWAY_LANE_FT of it (nearLaneX) rather
-   than the walkway's full width, the way a real floor-marked walking lane
-   would: go to the closest point of that lane, then as directly as possible
-   to the point of it closest to the next station, then out to that station's
-   front — a diagonal only where that's actually shorter than a straight
-   crossing, never just for its own sake.
+   station's own box.
 
    Two benches sharing a walkway (same column, or the two columns of a pair,
-   any combination of rows) route this way directly: front -> nearest lane
-   edge for that column -> nearest lane edge for the other column -> front.
-   This is safe for every row combination, including two rows apart, because
-   both "front" points already sit exactly on the walkway's boundary — the
-   whole line from one to the other never re-enters either column's width, so
-   there's no bench left to clip (verified exhaustively, for every real bench
-   pair, in data.test.js).
+   any combination of rows) route directly, front to front, with no detour
+   through the walkway's middle first: both "front" points already sit
+   exactly on the walkway's own boundary, so the straight line between them
+   never re-enters either column's width. This is safe for every row
+   combination, including two rows apart, because there's no bench left to
+   clip along that line (verified exhaustively, for every real bench pair,
+   in data.test.js).
 
    Everything else — different walkways, or anything touching a fixture,
    including the trio for simplicity — routes via the back-walkway rail
@@ -468,11 +435,7 @@ const fromRailPoints = (id) => {
 export function routeWaypoints(aId, bId) {
   if (!isFixtureId(aId) && !isFixtureId(bId)) {
     const gA = groupOf(aId[0]), gB = groupOf(bId[0]);
-    if (gA === gB) {
-      const fA = front(aId), fB = front(bId);
-      const nearA = nearLaneX(aId[0]), nearB = nearLaneX(bId[0]);
-      return [fA, { x: nearA, y: fA.y }, { x: nearB, y: fB.y }, fB];
-    }
+    if (gA === gB) return [front(aId), front(bId)];
   }
   return [...toRailPoints(aId), ...fromRailPoints(bId)];
 }
