@@ -240,7 +240,7 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
           <polyline
             key={"link" + i}
             points={pts.map((p) => `${p.x},${p.y}`).join(" ")}
-            fill="none" stroke={C.green} strokeWidth={2} strokeDasharray="6 4" opacity={0.9}
+            fill="none" stroke={C.sage} strokeWidth={2} strokeDasharray="6 4" opacity={0.9}
           />
         ))}
         {dotPoint && (
@@ -296,7 +296,7 @@ export default function LabMap({ stationEquip, hoverSlot, setHoverSlot, highligh
         )}
         {linkPts.length > 0 && (
           <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <svg width={18} height={10}><line x1={0} y1={5} x2={18} y2={5} stroke={C.green} strokeWidth={2} strokeDasharray="4 3" /></svg>
+            <svg width={18} height={10}><line x1={0} y1={5} x2={18} y2={5} stroke={C.sage} strokeWidth={2} strokeDasharray="4 3" /></svg>
             step → next step
           </span>
         )}

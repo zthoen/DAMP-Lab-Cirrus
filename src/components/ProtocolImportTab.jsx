@@ -27,9 +27,16 @@ export default function ProtocolImportTab({ labData }) {
   const [hoverSlot, setHoverSlot] = useState(null);
 
   const parsed = useMemo(() => parseProtocol(rawProtocol, labData.equipToStations), [rawProtocol, labData.equipToStations]);
-  const selectedStep = selectedKey === FULL_KEY ? null : parsed.steps.find((s) => s.number === selectedKey) || null;
+  const selectedIndex = selectedKey === FULL_KEY ? -1 : parsed.steps.findIndex((s) => s.number === selectedKey);
+  const selectedStep = selectedIndex === -1 ? null : parsed.steps[selectedIndex];
   const highlightPath = selectedKey === FULL_KEY ? parsed.fullPath : (selectedStep ? selectedStep.path : []);
   const fullLabel = parsed.name || "Full Protocol";
+
+  // Only while a single step of a multi-step protocol is selected — never for
+  // "Full Protocol" — and only the one link leading out of *that* step (its
+  // own last station to the next step's first), never the whole protocol's
+  // worth of boundaries at once.
+  const stepLinks = selectedIndex >= 0 && selectedIndex < parsed.stepLinks.length ? [parsed.stepLinks[selectedIndex]] : [];
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "400px 1fr", gap: 16 }}>
@@ -71,7 +78,7 @@ export default function ProtocolImportTab({ labData }) {
           stationEquip={labData.stationEquip}
           hoverSlot={hoverSlot} setHoverSlot={setHoverSlot}
           highlightPath={highlightPath}
-          stepLinks={parsed.stepLinks}
+          stepLinks={stepLinks}
         />
         {parsed.steps.length > 0 && (
           <div style={{ marginTop: 8, fontSize: 11.5, fontFamily: MONO, color: C.muted }}>

@@ -4,7 +4,7 @@ export const VIEW_W = 960, VIEW_H = 370;
 export const C = {
   bg: "#121212", panel: "#1c1c1c", panel2: "#171717", border: "#333333",
   text: "#e5e5e5", muted: "#8a8a8a", teal: "#e2395c", amber: "#f2b134",
-  red: "#ff5c6c", blue: "#93b3b8", green: "#8be04e", floor: "#161616",
+  red: "#ff5c6c", blue: "#93b3b8", green: "#8be04e", sage: "#8fbf9f", floor: "#161616",
   slot: "#232323", slotLine: "#3a3a3a",
 };
 export const MONO = "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";

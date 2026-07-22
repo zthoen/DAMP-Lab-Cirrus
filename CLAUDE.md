@@ -525,14 +525,14 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   array identity, since the parent tab passes a freshly-built array on every render
   (e.g. on hover) — keying on identity would otherwise reset playback constantly.
   A fifth optional prop, `stepLinks` (an array of `[a, b]` station-id pairs —
-  `ProtocolImportTab.jsx` passes `parsed.stepLinks`, see `protocolImport.js`
-  above), draws each pair's `routeWaypoints` route as its own **dashed** green
-  polyline layered on top of the main solid one, so a step-to-step hand-off
-  reads as visually distinct from ordinary within-step movement regardless of
-  whether the full protocol or just one step is currently selected — the
-  Protocol Generator tab simply never passes it, since its protocols are flat
-  step lists with no step/substep grouping to have a boundary in the first
-  place. This is the only state `LabMap.jsx` owns otherwise; it's a pure render of
+  `ProtocolImportTab.jsx` passes at most one, see below), draws each pair's
+  `routeWaypoints` route as its own **dashed**, soft-green (`C.sage`) polyline
+  layered on top of the main solid one — going only as far as that one pair,
+  never extending past the destination station — so a step-to-step hand-off
+  reads as visually distinct from ordinary within-step movement. The Protocol
+  Generator tab never passes it, since its protocols are flat step lists with
+  no step/substep grouping to have a boundary in the first place. This is the
+  only state `LabMap.jsx` owns otherwise; it's a pure render of
   whatever's in the parsed table. A busy badge (many revisits, e.g.
   Consumables in a long real protocol) would otherwise grow one wide pill that
   overlaps its neighbors — instead `wrapStepNums` packs the step numbers into as
@@ -554,10 +554,13 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   rendering its substeps through the shared `StepTable` (see `Controls.jsx`
   below) — an unresolved substep shows `?` in red instead of a name. Selecting a
   step highlights just that step's own `path`; the summary card highlights
-  `fullPath`, the whole route start to finish. Either way, `parsed.stepLinks`
-  is passed to `LabMap.jsx` unconditionally, so the dashed step-boundary
-  overlay (see `LabMap.jsx` above) always shows every step's hand-off to the
-  next, regardless of which one is currently selected. The pasted protocol text itself
+  `fullPath`, the whole route start to finish. The dashed step-link overlay
+  (see `LabMap.jsx` above) only ever appears while a single step is selected
+  — never for "Full Protocol" — and only that one step's own link out
+  (`parsed.stepLinks[selectedIndex]`, found by locating the selected step's
+  position in `parsed.steps` since step *numbers* aren't reliably 0-based
+  contiguous array indices), so it reads as "here's where this step hands off
+  to," not a map-wide overlay of every boundary at once. The pasted protocol text itself
   is persisted via `usePersistedState(sessionStorage, "damp-lab-raw-protocol", "")`
   — deliberately `sessionStorage`, not `localStorage`: it should survive a
   reload within the same browser session but never resurface in a later one,
