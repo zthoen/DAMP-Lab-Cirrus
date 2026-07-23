@@ -1,89 +1,131 @@
 import { BENCH_DIST_FT, PIPETTE_STATIONS, walkMinutesForFt } from "./data.js";
-import { parseProtocol } from "./protocolImport.js";
+import { parseProtocol, PIPETTE_LABEL } from "./protocolImport.js";
 
-// A protocol's own fixed, schedule-independent timeline: the ordered list of
-// station-occupancy intervals it would produce if run start-to-finish with no
-// waiting, starting at relative time 0 — travel time (walkMinutesForFt over
-// BENCH_DIST_FT) between consecutive resolved stations, plus each substep's
-// own `minutes` occupying its station. A substep whose equipment never
-// resolved to a station (same as protocolImport.js's `path`) contributes
-// neither travel nor an occupancy interval and is skipped entirely, exactly
-// like `path`'s `.filter(Boolean)`.
-function buildTimeline(steps, distTable) {
-  const events = [];
-  let t = 0;
-  let prevStation = null;
-  for (const step of steps) {
-    for (const sub of step.substeps) {
-      if (!sub.station) continue;
-      if (prevStation) t += walkMinutesForFt(distTable[prevStation][sub.station]);
-      const start = t;
-      const end = t + (sub.minutes || 0);
-      events.push({ label: sub.label, equipment: sub.equipment, station: sub.station, action: sub.action, start, end });
-      t = end;
-      prevStation = sub.station;
-    }
-  }
-  return { events, durationMin: t };
+// The first committed interval on `station` that overlaps [start, end), or
+// null if the station is free the whole time.
+function firstConflict(committed, station, start, end) {
+  const intervals = committed.get(station);
+  if (!intervals) return null;
+  return intervals.find((iv) => start < iv.end && iv.start < end) || null;
 }
 
-const overlaps = (aStart, aEnd, bStart, bEnd) => aStart < bEnd && bStart < aEnd;
+// Nearest-first ordering, same tie-break as protocolImport.js's own
+// `nearestStation`: with no previous station yet (the protocol's very first
+// substep), the pool's own order is kept rather than sorted.
+function orderByDistance(candidates, from, distTable) {
+  if (!from) return candidates;
+  return [...candidates].sort((a, b) => distTable[from][a] - distTable[from][b]);
+}
 
-/* Finds the earliest start time >= 0 for a protocol's own relative `events`
-   such that, once shifted by that start, none of its station-occupancy
-   intervals overlaps any interval a higher-priority protocol already
-   committed to that same station — directly implementing the "detect a
-   conflict, flag where it happens, push forward, recheck" cycle: each pass
-   scans events in order for the first one that still collides against the
-   current candidate start (`conflict`), records it, and advances the
-   candidate just far enough to clear that specific collision (to the end of
-   the interval it collided with). Because every advance strictly clears the
-   interval that caused it and the candidate only ever moves later, this
-   always terminates — the same station's committed intervals can't be
-   revisited in a way that grows the count of remaining conflicts, so the
-   loop can run at most once per (event, committed interval) pair that could
-   ever collide. Returns `{ start, conflicts }` — `conflicts` is the resolved
-   log of every collision that had to be pushed past, in the order found, so
-   the caller can show *why* a protocol started later than its own
-   would-be-uninterrupted time. */
-function earliestStart(events, committed) {
-  let candidate = 0;
-  const conflicts = [];
+/* Builds one protocol's timeline for a specific candidate whole-protocol
+   start time (`startMin`), choosing each substep's station in order. A
+   substep whose Equipment cell reads "Pipette" isn't tied to one bench —
+   `parseProtocol` already resolves it to the *nearest* pipette-eligible
+   station for the formatted view, but here it's re-resolved against the
+   whole `pipetteStations` pool at scheduling time, since a different bench
+   from that pool can substitute if the nearest one is busy. Every other
+   substep keeps parseProtocol's own single resolved `station` — only a
+   Pipette step has more than one bench that could do the job, so only a
+   Pipette step ever gets rerouted around a conflict instead of forcing the
+   whole protocol to wait for it.
+
+   For each substep, the pool (just `[sub.station]` for anything that isn't
+   "Pipette") is tried nearest-first; the first candidate that's actually
+   free at the time it would be used is taken with no further consequence.
+   If every candidate is busy, building stops right there and reports the
+   candidate that would free up *soonest* (`conflict`, chosen by minimum
+   delay across the whole pool, so a forced wait is always as short as
+   possible) instead of continuing to build past it — the caller is going to
+   retry with a larger `startMin` anyway, and everything from this substep
+   onward would need to be recomputed against the new time regardless. */
+function buildTimelineAt(steps, distTable, pipetteStations, committed, startMin) {
+  const events = [];
+  const swaps = [];
+  let t = 0;
+  let prevStation = null;
+
+  for (const step of steps) {
+    for (const sub of step.substeps) {
+      const isPipette = PIPETTE_LABEL.test(sub.equipment);
+      const candidates = isPipette ? pipetteStations : (sub.station ? [sub.station] : []);
+      if (candidates.length === 0) continue;
+
+      const ordered = orderByDistance(candidates, prevStation, distTable);
+      const preferred = ordered[0];
+      let chosen = null, chosenStart = 0, chosenEnd = 0;
+      let bestConflict = null; // the candidate needing the smallest delay, among those tried
+
+      for (const cand of ordered) {
+        const travel = prevStation ? walkMinutesForFt(distTable[prevStation][cand]) : 0;
+        const relStart = t + travel, relEnd = relStart + (sub.minutes || 0);
+        const absStart = startMin + relStart, absEnd = startMin + relEnd;
+        const blocking = firstConflict(committed, cand, absStart, absEnd);
+        if (!blocking) { chosen = cand; chosenStart = relStart; chosenEnd = relEnd; break; }
+        const delta = blocking.end - absStart;
+        if (!bestConflict || delta < bestConflict.delta) {
+          bestConflict = {
+            station: cand, delta, withProtocolIndex: blocking.protocolIndex,
+            pushedTo: blocking.end, atMinute: absStart, isPipette,
+          };
+        }
+      }
+
+      if (chosen == null) return { events, swaps, durationMin: t, conflict: bestConflict };
+
+      // The preferred (nearest) candidate was busy but a Pipette step could
+      // route around it to a different bench with no delay at all — still a
+      // real conflict that "arose," just one resolved by rerouting instead
+      // of waiting.
+      if (chosen !== preferred) swaps.push({ station: preferred, resolvedStation: chosen, delta: 0, isPipette: true });
+
+      events.push({ label: sub.label, equipment: sub.equipment, station: chosen, action: sub.action, start: chosenStart, end: chosenEnd, isPipette });
+      t = chosenEnd;
+      prevStation = chosen;
+    }
+  }
+  return { events, swaps, durationMin: t, conflict: null };
+}
+
+/* Places one protocol's timeline against `committed` (every higher-priority
+   protocol's own already-placed intervals), starting from candidate time 0
+   and re-building the whole timeline from scratch each time a substep can't
+   be resolved without a delay — directly implementing "detect a conflict,
+   flag it, push forward, recheck" as a convergent loop: `buildTimelineAt`
+   always advances `startMin` by a strictly positive amount that clears the
+   specific collision it just found, and a full rebuild at the new,
+   later `startMin` re-validates everything, including substeps that were
+   already fine, rather than assuming they still are. */
+function placeProtocol(steps, distTable, pipetteStations, committed) {
+  let startMin = 0;
+  const delays = [];
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    let hit = null;
-    for (const ev of events) {
-      const intervals = committed.get(ev.station);
-      if (!intervals) continue;
-      const start = candidate + ev.start, end = candidate + ev.end;
-      const iv = intervals.find((c) => overlaps(start, end, c.start, c.end));
-      if (iv) { hit = { ev, start, iv }; break; }
+    const built = buildTimelineAt(steps, distTable, pipetteStations, committed, startMin);
+    if (!built.conflict) {
+      return { events: built.events, durationMin: built.durationMin, startMin, conflicts: [...delays, ...built.swaps] };
     }
-    if (!hit) return { start: candidate, conflicts };
-    conflicts.push({ station: hit.ev.station, atMinute: hit.start, withProtocolIndex: hit.iv.protocolIndex, pushedTo: hit.iv.end });
-    candidate += hit.iv.end - hit.start;
+    delays.push({ ...built.conflict, resolvedStation: built.conflict.station });
+    startMin += built.conflict.delta;
   }
 }
 
 /* Schedules a set of protocols (same Step/Substep/Equipment/Time format as
    the Protocol Visualizer, plus the 4th "Time (minutes)" column) onto a
    shared timeline of station usage. Protocols are scheduled in the order
-   they're passed — that order *is* the priority order (see App.jsx's
-   Protocol Scheduler tab): the first protocol always starts at time 0 and
-   never moves for anyone; each later protocol is placed as early as possible
-   without colliding with any equipment a higher-priority protocol already
-   claimed, only ever being delayed itself — never delaying an
-   already-scheduled, higher-priority protocol. That's a direct, deterministic
-   realization of "detect conflicts, push forward, repeat until none exist,"
-   scoped one protocol at a time against a timeline of intervals that's only
-   ever added to (see earliestStart above) — it always converges, and a
-   protocol's own priority is respected exactly because it's fixed before any
-   lower-priority protocol is ever considered.
+   they're passed — that order *is* their priority, 1 (first) through N
+   (last), highest to lowest (see ProtocolSchedulerTab.jsx's numbered paste
+   boxes): the first protocol always starts at time 0 and never moves for
+   anyone; each later protocol is placed as early as possible without
+   colliding with any equipment a higher-priority protocol already claimed,
+   only ever being delayed (or, for a Pipette step, rerouted to a different
+   bench) itself — never delaying an already-scheduled, higher-priority
+   protocol.
 
    Each protocol's own step/substep sequence and per-substep duration
    ("used the entirety of the time as labeled") are never reordered or split
-   — the only thing scheduling ever changes is *when* a protocol as a whole
-   begins.
+   — the only things scheduling can change are *when* a protocol as a whole
+   begins and, for a Pipette step specifically, *which* pipette-eligible
+   bench it lands on (see buildTimelineAt/placeProtocol above).
 
    `distTable`/`pipetteStations` default to the real, current floor
    (BENCH_DIST_FT/PIPETTE_STATIONS), same as protocolImport.js's
@@ -93,9 +135,12 @@ function earliestStart(events, committed) {
    protocol, in priority order: `{ index, name, startMin, endMin,
    durationMin, stationsVisited, path, events, conflicts, errors }` —
    `events`/`path` are already shifted onto the shared timeline (absolute
-   minutes, not relative to the protocol's own start), `conflicts` is the log
-   from earliestStart (empty if the protocol never had to wait), and `errors`
-   is parseProtocol's own per-row error list. */
+   minutes, not relative to the protocol's own start). `conflicts` is every
+   collision that had to be resolved to place this protocol, in the order
+   found — a whole-protocol delay (`delta > 0`) or a same-time Pipette
+   reroute (`delta === 0`, `isPipette: true`) — empty if the protocol never
+   ran into one; its length is what `ProtocolSchedulerTab.jsx` reports as
+   "Conflicts Resolved." `errors` is parseProtocol's own per-row error list. */
 export function scheduleProtocols(equipToStations, protocolTexts, distTable = BENCH_DIST_FT, pipetteStations = PIPETTE_STATIONS) {
   const cleanTexts = (protocolTexts || []).map((t) => t || "").filter((t) => t.trim());
 
@@ -110,8 +155,7 @@ export function scheduleProtocols(equipToStations, protocolTexts, distTable = BE
 
   const schedule = cleanTexts.map((raw, index) => {
     const parsed = parseProtocol(raw, equipToStations, distTable, pipetteStations);
-    const { events, durationMin } = buildTimeline(parsed.steps, distTable);
-    const { start: startMin, conflicts } = earliestStart(events, committed);
+    const { events, durationMin, startMin, conflicts } = placeProtocol(parsed.steps, distTable, pipetteStations, committed);
 
     const shiftedEvents = events.map((ev) => ({ ...ev, start: startMin + ev.start, end: startMin + ev.end }));
     for (const ev of shiftedEvents) {

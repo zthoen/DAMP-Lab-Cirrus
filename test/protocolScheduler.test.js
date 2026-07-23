@@ -134,3 +134,39 @@ test("protocol names fall back to 'Protocol N' when the paste has no title line"
   const { schedule } = scheduleProtocols(equipToStations(), [raw]);
   assert.equal(schedule[0].name, "Protocol 1");
 });
+
+test("a Pipette step reroutes to a different pipette-eligible bench instead of waiting, when its preferred one is busy", () => {
+  const pool = ["A1", "B1"];
+  const a = `1. Prep\t1.1\tOpentrons Flex Robot\t10`; // claims A1, [0,10]
+  const b = `1. Aliquot\t1.1\tPipette\t8`; // A1 is the preferred (first, no prior station) pool member
+  const { schedule } = scheduleProtocols(equipToStations(), [a, b], BENCH_DIST_FT, pool);
+  assert.equal(schedule[0].startMin, 0);
+  assert.equal(schedule[1].startMin, 0); // rerouted, not delayed
+  assert.deepEqual(schedule[1].path, ["B1"]);
+  assert.equal(schedule[1].conflicts.length, 1);
+  assert.equal(schedule[1].conflicts[0].delta, 0);
+  assert.equal(schedule[1].conflicts[0].isPipette, true);
+  assert.equal(schedule[1].conflicts[0].station, "A1");
+  assert.equal(schedule[1].conflicts[0].resolvedStation, "B1");
+});
+
+test("a Pipette step still waits when every pipette-eligible bench is busy, picking whichever frees up soonest", () => {
+  const pool = ["A1", "B1"];
+  const a = `1. Prep\t1.1\tOpentrons Flex Robot\t10`; // claims A1, [0,10]
+  const b = `1. Weigh\t1.1\tDry Chemical Scale\t6`; // claims B1, [0,6]
+  const c = `1. Aliquot\t1.1\tPipette\t5`;
+  const { schedule } = scheduleProtocols(equipToStations(), [a, b, c], BENCH_DIST_FT, pool);
+  assert.equal(schedule[2].startMin, 6); // B1 frees at 6, sooner than A1's 10
+  assert.deepEqual(schedule[2].path, ["B1"]);
+  assert.ok(schedule[2].conflicts.length >= 1);
+  assert.ok(schedule[2].conflicts.some((c) => c.delta > 0)); // had to wait at all
+});
+
+test("with only one pipette-eligible bench in the pool, a Pipette step behaves exactly like ordinary single-station equipment", () => {
+  const pool = ["C1"];
+  const a = `1. Read\t1.1\tNanoDrop 2000\t10`; // also C1, [0,10]
+  const b = `1. Aliquot\t1.1\tPipette\t5`;
+  const { schedule } = scheduleProtocols(equipToStations(), [a, b], BENCH_DIST_FT, pool);
+  assert.equal(schedule[1].startMin, 10);
+  assert.deepEqual(schedule[1].path, ["C1"]);
+});

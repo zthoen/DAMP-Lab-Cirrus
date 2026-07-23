@@ -4,6 +4,7 @@ import {
   routeDistanceFt, routeWaypoints, BENCH_DIST_FT, STATION_IDS, STATION_NAME, NAME_TO_STATION_ID, center, front, FIXTURES,
   WALKWAY_WIDTH_FT, BACK_AISLE_FT, BENCH_LEN_FT, BENCH_WIDTH_FT, SLOTS, isFixtureId,
   TOUCHING_PAIRS, DEFAULT_TRIO_ANCHOR, nearFixturesForAnchor, trioFixturesForAnchor, buildDistTable, DIST_TABLES_BY_ANCHOR,
+  WALK_FT_PER_SEC, walkMinutesForFt,
 } from "../src/data.js";
 
 // Liang-Barsky segment/AABB clipping — true only for a real, nonzero-length
@@ -340,6 +341,12 @@ test("trioFixturesForAnchor keeps the trio's left-to-right order (sharps, recycl
 test("buildDistTable for the default anchor matches BENCH_DIST_FT exactly", () => {
   const table = buildDistTable(nearFixturesForAnchor(DEFAULT_TRIO_ANCHOR));
   assert.deepEqual(table, BENCH_DIST_FT);
+});
+
+test("walkMinutesForFt assumes 5ft of travel takes 1 second", () => {
+  assert.equal(WALK_FT_PER_SEC, 5);
+  assert.ok(Math.abs(walkMinutesForFt(5) - 1 / 60) < 1e-9);
+  assert.ok(Math.abs(walkMinutesForFt(50) - 10 / 60) < 1e-9);
 });
 
 test("DIST_TABLES_BY_ANCHOR has one table per anchor, BC identical to BENCH_DIST_FT", () => {

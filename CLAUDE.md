@@ -72,7 +72,7 @@ bench that isn't one of the route's own two endpoints) and always shorter
   walked as one diagonal too, the same reasoning as the same-walkway case, just
   applied to the aisle's rectangle instead of a walkway's.
 
-`WALK_FT_PER_SEC` (2.5 — "5ft every 2 seconds") and `walkMinutesForFt(ft)` turn a
+`WALK_FT_PER_SEC` (5 — "5ft every second") and `walkMinutesForFt(ft)` turn a
 `BENCH_DIST_FT` distance into travel *time*; nothing in the app used feet-to-time
 conversion before the Protocol Scheduler (`protocolScheduler.js`), which is currently
 the only caller.
@@ -493,50 +493,69 @@ places a set of pasted, *timed* real protocols (same Step/Substep/Equipment
 format as the Protocol Visualizer, plus the 4th Time column `protocolImport.js`
 now parses) onto a shared timeline of station usage, so that no two protocols
 are ever using the same piece of equipment at the same time. The order
-protocols are passed in *is* their priority order — mirrored directly in the
-UI by pasting them into numbered boxes top to bottom: the first protocol
-always starts at time 0 and never moves for anyone; every later protocol
-starts as early as it possibly can, only ever being delayed itself, never
-delaying an already-scheduled, higher-priority one.
+protocols are passed in *is* their priority, 1 (first) through N (last) —
+mirrored directly in the UI by pasting them into numbered boxes top to bottom,
+each labeled with its own rank: the first protocol always starts at time 0 and
+never moves for anyone; every later protocol starts as early as it possibly
+can, only ever being delayed (or, for a Pipette step, rerouted — see below)
+itself, never delaying an already-scheduled, higher-priority one.
 
-`buildTimeline(steps, distTable)` first computes each protocol's own
-schedule-independent shape: the ordered list of station-occupancy intervals
-("Step 1.1 uses the NanoDrop from minute 3 to minute 8") it would produce if
-run start-to-finish with no waiting, starting at relative time 0 — travel time
-between consecutive resolved stations (`walkMinutesForFt` over `distTable`,
-data.js) plus each substep's own `minutes` occupying its station, exactly
-mirroring `protocolImport.js`'s own `path`/`travelFt` logic (a substep whose
-equipment never resolved to a station contributes neither travel nor an
-occupancy interval, same as `path`'s null-filtering). A protocol's own
-step/substep sequence and per-substep duration are never reordered or split —
-"used the entirety of the time as labeled" is enforced simply by never cutting
-an interval into pieces; the only thing scheduling ever changes is *when* a
-protocol as a whole begins.
+`buildTimelineAt(steps, distTable, pipetteStations, committed, startMin)`
+computes one protocol's timeline for a specific candidate whole-protocol start
+time, choosing each substep's station in order. Almost every substep has
+exactly one candidate — `parseProtocol`'s own already-resolved `station` — but
+a substep whose Equipment cell reads "Pipette" isn't tied to one bench, so
+it's re-resolved here against the *whole* `pipetteStations` pool (not just the
+one nearest station `parseProtocol` picked for the formatted view), nearest
+first, same tie-break as `protocolImport.js`'s own `nearestStation`. For each
+substep, the first candidate that's actually free — no overlap with anything a
+higher-priority protocol already committed to that station — is taken with no
+further consequence; travel time to it (`walkMinutesForFt` over `distTable`)
+plus its own `minutes` occupying it become its interval, exactly mirroring
+`protocolImport.js`'s `path`/`travelFt` logic. If every candidate for a
+substep is busy, building stops right there (nothing after it matters yet)
+and reports whichever candidate would free up *soonest* across the whole
+pool — for ordinary equipment that pool has one member, so this is just "wait
+for it"; for a Pipette step with more than one bench able to do the job, it's
+a real choice, and picking the soonest-free one keeps any forced wait as
+short as possible. A protocol's own step/substep sequence and per-substep
+duration ("used the entirety of the time as labeled") are never reordered or
+split — the only things scheduling can ever change are *when* a protocol as a
+whole begins and, for a Pipette step specifically, *which* pipette-eligible
+bench it lands on.
 
-`earliestStart(events, committed)` places one protocol's relative timeline
-onto the shared one: starting from candidate time 0, it scans for the first
-event that still collides with an interval a higher-priority protocol already
-committed to that same station, advances the candidate just far enough to
-clear that specific collision (to the end of the interval it collided with),
-and rechecks — directly implementing "detect a conflict, flag where it
-happens, push forward, recheck" as a convergent loop, since every advance
-strictly clears the interval that caused it and the candidate only ever moves
-later. `scheduleProtocols` runs this once per protocol, in priority order,
-adding that protocol's own now-placed intervals to `committed` before moving
-to the next — priority is respected simply because a protocol's schedule is
-fixed before any lower-priority one is ever considered, so nothing scheduled
-earlier can ever be pushed by something scheduled later.
+`placeProtocol(steps, distTable, pipetteStations, committed)` is the outer
+loop: starting from candidate time 0, it calls `buildTimelineAt`; if the
+build made it all the way through with no unresolvable substep, that's the
+protocol's placement. Otherwise it records the reported conflict and advances the
+candidate start by exactly enough to clear it, then rebuilds the *entire*
+timeline from scratch at the new, later start — never assuming an
+earlier-placed substep is still fine, since a later start can in principle
+put it somewhere new. This is a direct, convergent realization of "detect a
+conflict, flag it, push forward, recheck": every advance strictly clears the
+specific collision that caused it and the candidate only ever moves later, so
+it always terminates. `scheduleProtocols` runs this once per protocol, in
+priority order, adding that protocol's own now-placed intervals to
+`committed` before moving to the next — priority is respected simply because
+a protocol's schedule is fixed before any lower-priority one is ever
+considered, so nothing scheduled earlier can ever be pushed (or rerouted) by
+something scheduled later.
+
+A conflict that's resolved by rerouting a Pipette step to a different,
+already-free bench (no delay at all, `delta === 0`) is logged the same way as
+one resolved by waiting (`delta > 0`) — both are real collisions that "arose"
+and had to be dealt with, they just differ in *how*; `ProtocolSchedulerTab.jsx`
+doesn't distinguish the two, it just reports the total count as "Conflicts
+Resolved."
 
 Returns `{ schedule, warnings }` (the same no-equipment/no-protocols
 `warnings` style as the Lab Optimizer). Each `schedule` entry is `{ index,
 name, startMin, endMin, durationMin, stationsVisited, path, events, conflicts,
 errors }` — `events`/`path` are already shifted onto the shared timeline
 (absolute minutes, not relative to the protocol's own start); `conflicts` is
-`earliestStart`'s own resolved-collision log (`{ station, atMinute,
-withProtocolIndex, pushedTo }` per collision pushed past, empty if the
-protocol never had to wait) — `ProtocolSchedulerTab.jsx` uses its *last* entry
-to explain, in one line, why a protocol started when it did; `errors` is
-`parseProtocol`'s own per-row error list, carried through unchanged.
+every collision that had to be resolved to place this protocol, in the order
+found (empty if it never ran into one) — `errors` is `parseProtocol`'s own
+per-row error list, carried through unchanged.
 
 **Persisted paste state (`src/usePersistedState.js`)** — every "remember what was
 pasted here" field in the app (the equipment table, the Protocol Visualizer's
@@ -719,25 +738,28 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   being a read-only analysis view over the real, fixed floor plan.
 - `ProtocolSchedulerTab.jsx` (tab label "Protocol Scheduler"): the same
   `protocols`-count-driven array of textareas as `LabOptimizerTab.jsx` (session-
-  persisted under its own key, `"damp-lab-scheduler-protocols"`), labeled by
-  priority order ("Protocol 1 (highest priority)" on the first box) instead of
-  by number alone, since here the paste *order itself* is meaningful input, not
-  just an index. A "Schedule" button calls `scheduleProtocols` and renders two
-  things: a summary table (Protocol, Start/End/Duration in minutes, benches
-  visited, and a plain-language "Why this start" column built from
-  `whyThisStart` — either "starts immediately" or a sentence naming which
-  higher-priority protocol it waited on, which station, and when that station
-  freed up, using the *last* entry in that protocol's `conflicts` log since
-  that's the one that actually determined its final start time), and a Gantt-
-  style "station-usage timeline": one row per protocol, each event rendered as
-  a colored block positioned/sized by percentage against a shared minute axis
-  (`niceStep` rounds the axis's tick spacing to a human-friendly 1/2/5/10/15/
-  20/30/60/120/240/480-minute step so it never shows an awkward tick count
-  regardless of how long the schedule runs). Each protocol gets one consistent
-  color across both the table (a small swatch next to its name) and its Gantt
-  row (`colorFor`, cycling the existing `C` palette — no new colors
-  introduced), so the two views read as describing the same thing at a
-  glance. This tab doesn't reuse `LabMap.jsx` — the deliverable here is
+  persisted under its own key, `"damp-lab-scheduler-protocols"`), each box
+  labeled with its own explicit rank out of the current count — "Protocol 1
+  (Priority 1 — Highest)" through "Protocol N (Priority N — Lowest)" — since
+  here the paste *order itself* is meaningful input, not just an index. A
+  "Schedule" button calls `scheduleProtocols` and renders two things: a
+  summary table (Priority, Protocol, Wait Time — `startMin`, i.e. how long a
+  protocol had to wait before beginning, since every protocol's own
+  independent earliest start is always 0 — Time to Complete — `endMin`,
+  the absolute minute, measured from the very first protocol's own start,
+  that this one finishes — and Conflicts Resolved, just `conflicts.length`,
+  with no attempt to explain each one in prose), and a Gantt-style
+  "station-usage timeline": one row per protocol, each event rendered as a
+  colored block (rounded-rect, not a sharp-cornered box, matching the row
+  track's own rounded corners and clipped to them via `overflow: hidden` so
+  neither ever looks jagged) positioned/sized by percentage against a shared
+  minute axis (`niceStep` rounds the axis's tick spacing to a human-friendly
+  1/2/5/10/15/20/30/60/120/240/480-minute step so it never shows an awkward
+  tick count regardless of how long the schedule runs). Each protocol gets
+  one consistent color across both the table (a small swatch next to its
+  name) and its Gantt row (`colorFor`, cycling the existing `C` palette — no
+  new colors introduced), so the two views read as describing the same thing
+  at a glance. This tab doesn't reuse `LabMap.jsx` — the deliverable here is
   explicitly a start-time table, not a floor-plan route, so there's nothing
   spatial for a map to add over the timeline it already renders.
 - `Controls.jsx`: shared widgets, some carried over from the original sim UI,

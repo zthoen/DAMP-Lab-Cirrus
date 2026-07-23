@@ -57,18 +57,23 @@ export default function ProtocolSchedulerTab({ labData }) {
 
       <div style={{ fontSize: 12, color: C.muted, marginBottom: 12, maxWidth: 900 }}>
         Paste each protocol in Step/Substep/Equipment format, plus a 4th <b>Time</b> column giving how many
-        minutes that substep uses its equipment for. The order you paste protocols in is their priority order —
-        the first always starts at time 0 and never moves; each later protocol starts as early as it can, only
-        ever getting delayed itself whenever it would otherwise need a station a higher-priority protocol is
-        still using (walking between stations is assumed to take 5ft per 2 seconds, and never occupies any
-        equipment). Each protocol runs start-to-finish once it begins &mdash; only its start time ever moves.
+        minutes that substep uses its equipment for. The order you paste protocols in is their priority order,
+        1 through {count} &mdash; 1 highest, {count} lowest: the first always starts at time 0 and never moves;
+        each later protocol starts as early as it can, only ever getting delayed itself whenever it would
+        otherwise need a station a higher-priority protocol is still using (walking between stations is assumed
+        to take 5ft per second, and never occupies any equipment). A <b>Pipette</b> step is the one exception —
+        with more than one bench able to do the job, a conflict on its usual bench first tries routing to a
+        different pipette-eligible one before ever delaying the protocol. Each protocol runs start-to-finish
+        once it begins &mdash; only its start time (and, for a Pipette step, which bench it lands on) ever moves.
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(2, count)}, 1fr)`, gap: 12, marginBottom: 16 }}>
         {texts.map((t, i) => (
           <div key={i}>
             <div style={{ fontSize: 11.5, color: C.muted, marginBottom: 4, fontFamily: MONO }}>
-              Protocol {i + 1} {i === 0 && <span style={{ color: C.teal }}>(highest priority)</span>}
+              Protocol {i + 1} <span style={{ color: C.teal }}>
+                (Priority {i + 1}{i === 0 ? " — Highest" : i === count - 1 ? " — Lowest" : ""})
+              </span>
             </div>
             <textarea
               value={t}
@@ -103,40 +108,29 @@ function ScheduleTable({ schedule }) {
     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, maxWidth: 900, marginBottom: 18 }}>
       <thead>
         <tr>
+          <th style={TH_STYLE}>Priority</th>
           <th style={TH_STYLE}>Protocol</th>
-          <th style={TH_STYLE}>Start (min)</th>
-          <th style={TH_STYLE}>End (min)</th>
-          <th style={TH_STYLE}>Duration (min)</th>
-          <th style={TH_STYLE}>Benches</th>
-          <th style={TH_STYLE}>Why this start</th>
+          <th style={TH_STYLE}>Wait Time (min)</th>
+          <th style={TH_STYLE}>Time to Complete (min)</th>
+          <th style={TH_STYLE}>Conflicts Resolved</th>
         </tr>
       </thead>
       <tbody>
         {schedule.map((p) => (
           <tr key={p.index} style={{ borderTop: `1px solid ${C.panel2}` }}>
+            <td style={{ padding: "6px 8px", fontFamily: MONO, color: C.muted }}>{p.index + 1}</td>
             <td style={{ padding: "6px 8px" }}>
               <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: colorFor(p.index), marginRight: 7 }} />
               <span style={{ color: C.text, fontWeight: 600 }}>{p.name}</span>
             </td>
             <td style={{ padding: "6px 8px", fontFamily: MONO, color: C.teal, fontWeight: 700 }}>{fmtMin(p.startMin)}</td>
             <td style={{ padding: "6px 8px", fontFamily: MONO, color: C.text }}>{fmtMin(p.endMin)}</td>
-            <td style={{ padding: "6px 8px", fontFamily: MONO, color: C.text }}>{fmtMin(p.durationMin)}</td>
-            <td style={{ padding: "6px 8px", fontFamily: MONO, color: C.text }}>{p.stationsVisited}</td>
-            <td style={{ padding: "6px 8px", color: C.muted, fontSize: 11 }}>{whyThisStart(p, schedule)}</td>
+            <td style={{ padding: "6px 8px", fontFamily: MONO, color: p.conflicts.length > 0 ? C.amber : C.text }}>{p.conflicts.length}</td>
           </tr>
         ))}
       </tbody>
     </table>
   );
-}
-
-function whyThisStart(p, schedule) {
-  if (p.conflicts.length === 0) return p.index === 0 ? "First priority — starts immediately." : "No conflicts — starts immediately.";
-  const last = p.conflicts[p.conflicts.length - 1];
-  const withName = schedule.find((o) => o.index === last.withProtocolIndex)?.name || `Protocol ${last.withProtocolIndex + 1}`;
-  const stationName = STATION_NAME[last.station] || last.station;
-  const extra = p.conflicts.length > 1 ? ` (${p.conflicts.length} conflicts resolved)` : "";
-  return `Waited for ${withName} to free ${stationName} at t=${fmtMin(last.pushedTo)}min${extra}`;
 }
 
 // Rounds a raw time span up to a "nice" gridline step (1/2/5/10/15/20/30/60/
@@ -168,7 +162,7 @@ function Gantt({ schedule, maxEnd }) {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 480 }}>
           {schedule.map((p) => (
-            <div key={p.index} style={{ position: "relative", height: 30, background: C.panel2, borderRadius: 6, border: `1px solid ${C.border}` }}>
+            <div key={p.index} style={{ position: "relative", height: 30, background: C.panel2, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden" }}>
               {ticks.map((m) => (
                 <div key={m} style={{ position: "absolute", left: pct(m), top: 0, bottom: 0, width: 1, background: C.border, opacity: 0.6 }} />
               ))}
@@ -179,7 +173,7 @@ function Gantt({ schedule, maxEnd }) {
                   style={{
                     position: "absolute", top: 4, bottom: 4,
                     left: pct(ev.start), width: `calc(${pct(ev.end)} - ${pct(ev.start)})`,
-                    minWidth: 2, background: colorFor(p.index), borderRadius: 3, opacity: 0.85,
+                    minWidth: 8, background: colorFor(p.index), borderRadius: 8, opacity: 0.85,
                     display: "flex", alignItems: "center", overflow: "hidden",
                   }}
                 >

@@ -14,10 +14,10 @@ export const BENCH_WIDTH_FT = 2.5;
 export const WALKWAY_WIDTH_FT = 6;
 export const BACK_AISLE_FT = 5;
 
-// A technician covers about 5ft every 2 seconds — the Protocol Scheduler's
-// only extra physical assumption, used to turn a route's distance
-// (BENCH_DIST_FT, in feet) into travel time between two substeps' stations.
-export const WALK_FT_PER_SEC = 2.5;
+// A technician covers about 5ft every second — the Protocol Scheduler's only
+// extra physical assumption, used to turn a route's distance (BENCH_DIST_FT,
+// in feet) into travel time between two substeps' stations.
+export const WALK_FT_PER_SEC = 5;
 export const walkMinutesForFt = (ft) => ft / WALK_FT_PER_SEC / 60;
 
 // Benches touch — there's no gap within a column (A1 touches A2 touches A3) or
