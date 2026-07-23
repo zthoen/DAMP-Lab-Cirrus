@@ -1,7 +1,7 @@
 {
   "name": "damp-lab-choreography-visualizer",
   "version": "1.0.0",
-  "description": "DAMP Lab - Cirrus - lab map builder, fake protocol generator, real protocol route visualizer, and layout optimizer",
+  "description": "DAMP Lab - Cirrus - lab map builder, fake protocol generator, real protocol route visualizer, layout optimizer, and conflict-free protocol scheduler",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -19,6 +19,9 @@ small Vite + React single-page app that runs entirely client-side.
 - **Lab Optimizer** — paste one or more real protocols and search for a
   station layout that minimizes total distance walked across all of them,
   within a few fixed constraints on what's allowed to move.
+- **Protocol Scheduler** — paste one or more *timed* real protocols, in
+  priority order, and find the earliest start time for each one that never
+  double-books a piece of equipment.
 
 ## Running it
 
@@ -39,4 +42,13 @@ npm test          # run the test suite (Node's built-in test runner, no extra de
 
 See `CLAUDE.md` for an architectural walkthrough of how the pieces fit
 together — the lab floor's geometry/distance model, the table/protocol
-parsers, and the layout optimizer's search.
+parsers, the layout optimizer's search, and the scheduler's conflict
+resolution.
+
+## Handoff packages
+
+`handoff/` holds standalone TypeScript ports of individual tools, prepped
+for embedding into other, external React codebases — each subfolder is a
+self-contained mini-package (its own `package.json`/`tsconfig.json`/
+`README.md`) with no dependency on this app. See `handoff/protocol-visualizer/`
+for the first one.
