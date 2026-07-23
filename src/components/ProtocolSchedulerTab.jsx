@@ -142,6 +142,11 @@ function niceStep(maxEnd, targetTicks = 8) {
   return NICE_STEPS.find((s) => s >= raw) || NICE_STEPS[NICE_STEPS.length - 1];
 }
 
+// Fixed width of the row-label column (protocol name) that sits to the left
+// of every Gantt row, axis included (an empty cell there keeps the axis's
+// ticks aligned with the timeline track below it, not the labels).
+const LABEL_COL = 130;
+
 function Gantt({ schedule, maxEnd }) {
   const step = niceStep(maxEnd);
   const axisMax = Math.ceil(maxEnd / step) * step || step;
@@ -153,35 +158,46 @@ function Gantt({ schedule, maxEnd }) {
     <div>
       <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text, marginBottom: 8 }}>Station-usage timeline</div>
       <div style={{ maxWidth: 900, overflowX: "auto" }}>
-        <div style={{ position: "relative", height: 18, marginBottom: 4, minWidth: 480 }}>
-          {ticks.map((m) => (
-            <div key={m} style={{ position: "absolute", left: pct(m), fontSize: 10, color: C.muted, fontFamily: MONO, transform: m === axisMax ? "translateX(-100%)" : "none" }}>
-              {m}m
-            </div>
-          ))}
+        <div style={{ display: "grid", gridTemplateColumns: `${LABEL_COL}px 1fr`, gap: 8, marginBottom: 4, minWidth: 480 + LABEL_COL }}>
+          <div />
+          <div style={{ position: "relative", height: 18 }}>
+            {ticks.map((m) => (
+              <div key={m} style={{ position: "absolute", left: pct(m), fontSize: 10, color: C.muted, fontFamily: MONO, transform: m === axisMax ? "translateX(-100%)" : "none" }}>
+                {m}m
+              </div>
+            ))}
+          </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 480 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 480 + LABEL_COL }}>
           {schedule.map((p) => (
-            <div key={p.index} style={{ position: "relative", height: 30, background: C.panel2, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden" }}>
-              {ticks.map((m) => (
-                <div key={m} style={{ position: "absolute", left: pct(m), top: 0, bottom: 0, width: 1, background: C.border, opacity: 0.6 }} />
-              ))}
-              {p.events.map((ev, i) => (
-                <div
-                  key={i}
-                  title={`${p.name} — ${ev.label} — ${STATION_NAME[ev.station] || ev.station} — ${fmtMin(ev.start)} to ${fmtMin(ev.end)} min`}
-                  style={{
-                    position: "absolute", top: 4, bottom: 4,
-                    left: pct(ev.start), width: `calc(${pct(ev.end)} - ${pct(ev.start)})`,
-                    minWidth: 8, background: colorFor(p.index), borderRadius: 8, opacity: 0.85,
-                    display: "flex", alignItems: "center", overflow: "hidden",
-                  }}
-                >
-                  <span style={{ fontSize: 9, color: "#0a0a0a", fontFamily: MONO, fontWeight: 700, padding: "0 3px", whiteSpace: "nowrap" }}>
-                    {STATION_NAME[ev.station] || ev.station}
-                  </span>
-                </div>
-              ))}
+            <div key={p.index} style={{ display: "grid", gridTemplateColumns: `${LABEL_COL}px 1fr`, gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, overflow: "hidden" }}>
+                <span style={{ flex: "0 0 auto", display: "inline-block", width: 9, height: 9, borderRadius: 2, background: colorFor(p.index) }} />
+                <span style={{ fontSize: 11.5, color: C.text, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={p.name}>
+                  {p.name}
+                </span>
+              </div>
+              <div style={{ position: "relative", height: 30, background: C.panel2, borderRadius: 10, border: `1px solid ${C.border}`, overflow: "hidden" }}>
+                {ticks.map((m) => (
+                  <div key={m} style={{ position: "absolute", left: pct(m), top: 0, bottom: 0, width: 1, background: C.border, opacity: 0.6 }} />
+                ))}
+                {p.events.map((ev, i) => (
+                  <div
+                    key={i}
+                    title={`${ev.label} — ${fmtMin(ev.end - ev.start)} min`}
+                    style={{
+                      position: "absolute", top: 4, bottom: 4,
+                      left: pct(ev.start), width: `calc(${pct(ev.end)} - ${pct(ev.start)})`,
+                      minWidth: 8, background: colorFor(p.index), borderRadius: 8, opacity: 0.85,
+                      display: "flex", alignItems: "center", overflow: "hidden",
+                    }}
+                  >
+                    <span style={{ fontSize: 9, color: "#0a0a0a", fontFamily: MONO, fontWeight: 700, padding: "0 3px", whiteSpace: "nowrap" }}>
+                      {STATION_NAME[ev.station] || ev.station}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>

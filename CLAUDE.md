@@ -749,17 +749,26 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   the absolute minute, measured from the very first protocol's own start,
   that this one finishes — and Conflicts Resolved, just `conflicts.length`,
   with no attempt to explain each one in prose), and a Gantt-style
-  "station-usage timeline": one row per protocol, each event rendered as a
-  colored block (rounded-rect, not a sharp-cornered box, matching the row
-  track's own rounded corners and clipped to them via `overflow: hidden` so
-  neither ever looks jagged) positioned/sized by percentage against a shared
-  minute axis (`niceStep` rounds the axis's tick spacing to a human-friendly
-  1/2/5/10/15/20/30/60/120/240/480-minute step so it never shows an awkward
-  tick count regardless of how long the schedule runs). Each protocol gets
-  one consistent color across both the table (a small swatch next to its
-  name) and its Gantt row (`colorFor`, cycling the existing `C` palette — no
-  new colors introduced), so the two views read as describing the same thing
-  at a glance. This tab doesn't reuse `LabMap.jsx` — the deliverable here is
+  "station-usage timeline": a fixed-width (`LABEL_COL`, 130px) row-label
+  column — a color swatch plus the protocol's own name, truncated with an
+  ellipsis and a `title` tooltip if it doesn't fit — sits to the left of
+  every row, axis included (the axis's own label cell is left empty so its
+  tick marks stay aligned with the timeline track below, not the labels).
+  Each event within a row is rendered as a colored block (rounded-rect, not
+  a sharp-cornered box, matching the row track's own rounded corners and
+  clipped to them via `overflow: hidden` so neither ever looks jagged)
+  positioned/sized by percentage against a shared minute axis (`niceStep`
+  rounds the axis's tick spacing to a human-friendly 1/2/5/10/15/20/30/60/
+  120/240/480-minute step so it never shows an awkward tick count regardless
+  of how long the schedule runs); hovering one shows a `title` tooltip of
+  just its own substep label and how long it occupied that station (e.g.
+  "1.2 — 8 min") — not the absolute start/end time, which would require
+  cross-referencing the axis to mean anything at a glance. Each protocol
+  gets one consistent color across the table (a small swatch next to its
+  name), its Gantt row label, and its Gantt row's own event blocks
+  (`colorFor`, cycling the existing `C` palette — no new colors introduced),
+  so all three read as describing the same thing at a glance. This tab
+  doesn't reuse `LabMap.jsx` — the deliverable here is
   explicitly a start-time table, not a floor-plan route, so there's nothing
   spatial for a map to add over the timeline it already renders.
 - `Controls.jsx`: shared widgets, some carried over from the original sim UI,
