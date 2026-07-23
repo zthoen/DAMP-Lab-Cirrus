@@ -43,8 +43,14 @@ const HEADER_WORD = /^step$/i;
    above the table (e.g. "Overnight Culture Prep") — unless it's already a valid
    data row (its Substep cell already looks like "N.M"), which keeps a paste that
    skips straight to data working unchanged. An optional header row (e.g. "Step
-   \tSubstep\tEquipment") may follow; after that, columns are [Step, Substep,
-   Equipment] — extra trailing columns (notes, durations, ...) are ignored.
+   \tSubstep\tEquipment\tTime") may follow; after that, columns are [Step,
+   Substep, Equipment, Time] — a 4th column giving how many minutes that
+   substep's equipment is used for. It's optional (defaults to 0 when the
+   column is absent or the cell is blank) since only the Protocol Scheduler
+   reads it; every other caller ignores `minutes` the same way it ignores any
+   other trailing column. A non-blank cell that isn't a valid non-negative
+   number is reported as an error and still treated as 0, the same "keep it,
+   but flag it" handling as an unmapped equipment name below.
    Equipment names are matched case-insensitively against `equipToStations` (the
    same equipment map the Equipment Input tab loads) to find where each substep
    happens; if an equipment name isn't a name loaded on the map, that substep is
@@ -103,10 +109,18 @@ export function parseProtocol(raw, equipToStations = {}, distTable = BENCH_DIST_
     const stepCell = (cols[0] || "").trim();
     const substepCell = (cols[1] || "").trim();
     const equipment = (cols[2] || "").trim();
+    const timeCell = (cols[3] || "").trim();
 
     const subMatch = SUBSTEP_RE.exec(substepCell);
     if (!subMatch) { errors.push(`Row ${lineNo}: "${substepCell}" is not a valid step.substep label`); return; }
     if (!equipment) { errors.push(`Row ${lineNo}: missing equipment`); return; }
+
+    let minutes = 0;
+    if (timeCell) {
+      const n = Number(timeCell);
+      if (!Number.isFinite(n) || n < 0) errors.push(`Row ${lineNo}: "${timeCell}" is not a valid time in minutes`);
+      else minutes = n;
+    }
 
     let station;
     if (PIPETTE_LABEL.test(equipment)) {
@@ -128,7 +142,7 @@ export function parseProtocol(raw, equipToStations = {}, distTable = BENCH_DIST_
     }
     const step = stepsByNumber.get(stepNumber);
     if (stepMatch) step.name = stepMatch[2];
-    step.substeps.push({ label: substepCell, equipment, station, action: classifyStepType(equipment) });
+    step.substeps.push({ label: substepCell, equipment, station, action: classifyStepType(equipment), minutes });
   });
 
   const steps = [...stepsByNumber.values()].sort((a, b) => a.number - b.number).map((s) => {

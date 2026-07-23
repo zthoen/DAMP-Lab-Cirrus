@@ -258,3 +258,37 @@ test("parseProtocol's default distTable/pipetteStations still match calling it w
   const implicit = parseProtocol(raw, equipToStations());
   assert.deepEqual(explicit, implicit);
 });
+
+test("an optional 4th Time column is parsed into minutes on each substep", () => {
+  const raw = `
+1. Prepare Reagents\t1.1\tOpentrons Flex Robot\t12.5
+\t1.2\tNanoDrop 2000\t5
+`.trim();
+  const { steps, errors } = parseProtocol(raw, equipToStations());
+  assert.equal(errors.length, 0);
+  assert.equal(steps[0].substeps[0].minutes, 12.5);
+  assert.equal(steps[0].substeps[1].minutes, 5);
+});
+
+test("minutes defaults to 0 when the Time column is absent or blank, without an error", () => {
+  const raw = `
+1. Prepare Reagents\t1.1\tOpentrons Flex Robot
+\t1.2\tNanoDrop 2000\t
+`.trim();
+  const { steps, errors } = parseProtocol(raw, equipToStations());
+  assert.equal(errors.length, 0);
+  assert.equal(steps[0].substeps[0].minutes, 0);
+  assert.equal(steps[0].substeps[1].minutes, 0);
+});
+
+test("a non-numeric or negative Time cell is reported as an error and treated as 0", () => {
+  const raw = `
+1. Prepare Reagents\t1.1\tOpentrons Flex Robot\tsoon
+\t1.2\tNanoDrop 2000\t-5
+`.trim();
+  const { steps, errors } = parseProtocol(raw, equipToStations());
+  assert.equal(steps[0].substeps[0].minutes, 0);
+  assert.equal(steps[0].substeps[1].minutes, 0);
+  assert.ok(errors.some((e) => /"soon" is not a valid time/.test(e)));
+  assert.ok(errors.some((e) => /"-5" is not a valid time/.test(e)));
+});

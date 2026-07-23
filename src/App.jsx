@@ -6,12 +6,14 @@ import LabBuilderTab from "./components/LabBuilderTab.jsx";
 import ProtocolGeneratorTab from "./components/ProtocolGeneratorTab.jsx";
 import ProtocolImportTab from "./components/ProtocolImportTab.jsx";
 import LabOptimizerTab from "./components/LabOptimizerTab.jsx";
+import ProtocolSchedulerTab from "./components/ProtocolSchedulerTab.jsx";
 
 const TAB_BLURB = {
   builder: "Paste an equipment-to-bench table from your spreadsheet and see it laid out on the lab floor.",
   protocols: "Generate fake protocols with a variable number of steps, drawn so each one forces the technician onto a different bench than the last.",
   import: "Paste a real protocol and see its actual route on the lab floor, step by step or start to finish.",
   optimizer: "Paste one or more real protocols and find a station layout that minimizes total distance walked across all of them.",
+  scheduler: "Paste one or more timed real protocols, in priority order, and find the earliest start time for each one that never double-books a piece of equipment.",
 };
 
 // The last pasted equipment list is remembered across reloads — booting the
@@ -49,13 +51,14 @@ export default function LabWorkflowApp() {
         <div style={{ fontSize: 15, fontWeight: 700, color: C.text }}>DAMP Lab - <span style={{ color: C.teal }}>Cirrus</span></div>
       </div>
       <div style={{ display: "flex", gap: 20, borderBottom: `1px solid ${C.border}`, marginBottom: 10 }}>
-        {tabBtn("builder", "Equipment Input")}{tabBtn("protocols", "Protocol Generator")}{tabBtn("import", "Protocol Visualizer")}{tabBtn("optimizer", "Lab Optimizer")}
+        {tabBtn("builder", "Equipment Input")}{tabBtn("protocols", "Protocol Generator")}{tabBtn("import", "Protocol Visualizer")}{tabBtn("optimizer", "Lab Optimizer")}{tabBtn("scheduler", "Protocol Scheduler")}
       </div>
       <div style={{ fontSize: 12, color: C.muted, marginBottom: 14, maxWidth: 720 }}>{TAB_BLURB[tab]}</div>
       {tab === "builder" && <LabBuilderTab rawTable={rawTable} setRawTable={setRawTable} labData={labData} />}
       {tab === "protocols" && <ProtocolGeneratorTab labData={labData} />}
       {tab === "import" && <ProtocolImportTab labData={labData} />}
       {tab === "optimizer" && <LabOptimizerTab labData={labData} />}
+      {tab === "scheduler" && <ProtocolSchedulerTab labData={labData} />}
     </div>
   );
 }

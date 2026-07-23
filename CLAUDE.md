@@ -8,8 +8,11 @@ DAMP Lab - Cirrus — a browser-based tool that turns a pasted equipment/bench
 table into a visual lab floor map, generates fake protocols (variable-length step
 sequences) engineered to force a lab technician to keep moving between benches instead
 of camping at one station, can import a *real* protocol (pasted step/substep/
-equipment data) to plot the actual route it walks, and can search for a station
-layout that minimizes total travel distance across a set of real protocols. No
+equipment data) to plot the actual route it walks, can search for a station
+layout that minimizes total travel distance across a set of real protocols, and
+can schedule a set of *timed* real protocols — run in priority order, each
+starting as early as it can without two protocols ever fighting over the same
+piece of equipment at the same time. No
 backend, no database, no simulation — a small Vite + React SPA. This repo is a
 stripped-down fork of a larger discrete-event lab simulator; the simulation engine,
 dispatch-policy comparisons, financials, and stats/experiments tooling were removed
@@ -23,9 +26,9 @@ because they're not needed for this tool's goal.
 - `npm test` — run the pure-function test suite (Node's built-in `node --test`, zero
   dependencies; see `test/`). Covers table parsing (`labTable.js`), the routing/
   distance model (`data.js`), fake-protocol generation (`protocolGen.js`), real-
-  protocol import (`protocolImport.js`), and the layout search (`labOptimizer.js`),
-  including seeded reproducibility. `npm test -- test/protocolGen.test.js` runs a
-  single file.
+  protocol import (`protocolImport.js`), the layout search (`labOptimizer.js`), and
+  the conflict-avoiding scheduler (`protocolScheduler.js`), including seeded
+  reproducibility. `npm test -- test/protocolGen.test.js` runs a single file.
 
 The repo is ESM (`"type": "module"`). There is no linter or type checker configured.
 
@@ -69,7 +72,12 @@ bench that isn't one of the route's own two endpoints) and always shorter
   walked as one diagonal too, the same reasoning as the same-walkway case, just
   applied to the aisle's rectangle instead of a walkway's.
 
-`BENCH_DIST_FT` precomputes this for every station pair (so the protocol generator
+`WALK_FT_PER_SEC` (2.5 — "5ft every 2 seconds") and `walkMinutesForFt(ft)` turn a
+`BENCH_DIST_FT` distance into travel *time*; nothing in the app used feet-to-time
+conversion before the Protocol Scheduler (`protocolScheduler.js`), which is currently
+the only caller.
+
+`BENCH_DIST_FT` precomputes the feet distances for every station pair (so the protocol generator
 doesn't recompute a route per draw) and `routeWaypoints(a, b)` returns the matching
 pixel path — deliberately *decoupled* from the feet numbers above rather than
 mirroring them exactly, because a technician doesn't actually walk hugging a bench's
@@ -327,8 +335,15 @@ which keeps a paste that skips straight to data working unchanged; a bare
 `"Step"` header cell with no name given is also recognized and left out of
 `name` rather than being captured verbatim. An optional header row (e.g. "Step
 \tSubstep\tEquipment") may follow the name line and is skipped the same way.
-After that, columns are `[Step, Substep, Equipment]` (extra trailing columns
-are ignored): a Step cell reads `"N. Name"` and — because it comes from a
+After that, columns are `[Step, Substep, Equipment, Time]`: a 4th column giving
+how many minutes that substep's equipment is used for — optional (defaults to
+`0` when the column is absent or the cell is blank), read into each substep's
+`minutes` field. Only `protocolScheduler.js` reads `minutes`; every other
+caller (the Protocol Visualizer, the Lab Optimizer) ignores it exactly like it
+ignores any other trailing column. A non-blank cell that isn't a valid
+non-negative number is reported in `errors` and still treated as `0` — the
+same "keep it, but flag it" handling as an unmapped equipment name below. A
+Step cell reads `"N. Name"` and — because it comes from a
 merged spreadsheet cell — only appears on that step's first row, every later
 substep row leaving it blank; a Substep cell is strictly `"N.M"` (e.g.
 `"1.2"`), which is what tells the two apart and is also the grouping key (the
@@ -472,6 +487,57 @@ directly), `relevantStationCount` (how many of the 24 benches the search
 actually had to consider), and `warnings` (no equipment loaded / no protocols
 pasted, mirroring the other generators' graceful-degradation style).
 
+**Protocol Scheduler (`src/protocolScheduler.js`)** — `scheduleProtocols(equipToStations,
+protocolTexts, distTable = BENCH_DIST_FT, pipetteStations = PIPETTE_STATIONS)`
+places a set of pasted, *timed* real protocols (same Step/Substep/Equipment
+format as the Protocol Visualizer, plus the 4th Time column `protocolImport.js`
+now parses) onto a shared timeline of station usage, so that no two protocols
+are ever using the same piece of equipment at the same time. The order
+protocols are passed in *is* their priority order — mirrored directly in the
+UI by pasting them into numbered boxes top to bottom: the first protocol
+always starts at time 0 and never moves for anyone; every later protocol
+starts as early as it possibly can, only ever being delayed itself, never
+delaying an already-scheduled, higher-priority one.
+
+`buildTimeline(steps, distTable)` first computes each protocol's own
+schedule-independent shape: the ordered list of station-occupancy intervals
+("Step 1.1 uses the NanoDrop from minute 3 to minute 8") it would produce if
+run start-to-finish with no waiting, starting at relative time 0 — travel time
+between consecutive resolved stations (`walkMinutesForFt` over `distTable`,
+data.js) plus each substep's own `minutes` occupying its station, exactly
+mirroring `protocolImport.js`'s own `path`/`travelFt` logic (a substep whose
+equipment never resolved to a station contributes neither travel nor an
+occupancy interval, same as `path`'s null-filtering). A protocol's own
+step/substep sequence and per-substep duration are never reordered or split —
+"used the entirety of the time as labeled" is enforced simply by never cutting
+an interval into pieces; the only thing scheduling ever changes is *when* a
+protocol as a whole begins.
+
+`earliestStart(events, committed)` places one protocol's relative timeline
+onto the shared one: starting from candidate time 0, it scans for the first
+event that still collides with an interval a higher-priority protocol already
+committed to that same station, advances the candidate just far enough to
+clear that specific collision (to the end of the interval it collided with),
+and rechecks — directly implementing "detect a conflict, flag where it
+happens, push forward, recheck" as a convergent loop, since every advance
+strictly clears the interval that caused it and the candidate only ever moves
+later. `scheduleProtocols` runs this once per protocol, in priority order,
+adding that protocol's own now-placed intervals to `committed` before moving
+to the next — priority is respected simply because a protocol's schedule is
+fixed before any lower-priority one is ever considered, so nothing scheduled
+earlier can ever be pushed by something scheduled later.
+
+Returns `{ schedule, warnings }` (the same no-equipment/no-protocols
+`warnings` style as the Lab Optimizer). Each `schedule` entry is `{ index,
+name, startMin, endMin, durationMin, stationsVisited, path, events, conflicts,
+errors }` — `events`/`path` are already shifted onto the shared timeline
+(absolute minutes, not relative to the protocol's own start); `conflicts` is
+`earliestStart`'s own resolved-collision log (`{ station, atMinute,
+withProtocolIndex, pushedTo }` per collision pushed past, empty if the
+protocol never had to wait) — `ProtocolSchedulerTab.jsx` uses its *last* entry
+to explain, in one line, why a protocol started when it did; `errors` is
+`parseProtocol`'s own per-row error list, carried through unchanged.
+
 **Persisted paste state (`src/usePersistedState.js`)** — every "remember what was
 pasted here" field in the app (the equipment table, the Protocol Visualizer's
 paste, the Lab Optimizer's protocol textareas) is a `useState` that also reads
@@ -484,7 +550,7 @@ to `defaultValue` on read, silently skip persisting on write. `serialize`/
 array of protocol texts is the one caller that passes `JSON.stringify`/a
 shape-validating parse instead (see `LabOptimizerTab.jsx` below).
 
-**UI (`src/`)** — four tabs driven by `App.jsx`, sharing one parsed `labData`
+**UI (`src/`)** — five tabs driven by `App.jsx`, sharing one parsed `labData`
 (`parseLabTable` over the raw pasted text, memoized in `App.jsx`):
 - `App.jsx`: also owns the raw pasted equipment text's persistence, via
   `usePersistedState(localStorage, "damp-lab-raw-table", "")` — the last-used
@@ -651,6 +717,29 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   *reports* the suggested layout; it doesn't rewrite `data.js`'s hardcoded
   `BENCH_NAMES` or affect any other tab, consistent with every other tab here
   being a read-only analysis view over the real, fixed floor plan.
+- `ProtocolSchedulerTab.jsx` (tab label "Protocol Scheduler"): the same
+  `protocols`-count-driven array of textareas as `LabOptimizerTab.jsx` (session-
+  persisted under its own key, `"damp-lab-scheduler-protocols"`), labeled by
+  priority order ("Protocol 1 (highest priority)" on the first box) instead of
+  by number alone, since here the paste *order itself* is meaningful input, not
+  just an index. A "Schedule" button calls `scheduleProtocols` and renders two
+  things: a summary table (Protocol, Start/End/Duration in minutes, benches
+  visited, and a plain-language "Why this start" column built from
+  `whyThisStart` — either "starts immediately" or a sentence naming which
+  higher-priority protocol it waited on, which station, and when that station
+  freed up, using the *last* entry in that protocol's `conflicts` log since
+  that's the one that actually determined its final start time), and a Gantt-
+  style "station-usage timeline": one row per protocol, each event rendered as
+  a colored block positioned/sized by percentage against a shared minute axis
+  (`niceStep` rounds the axis's tick spacing to a human-friendly 1/2/5/10/15/
+  20/30/60/120/240/480-minute step so it never shows an awkward tick count
+  regardless of how long the schedule runs). Each protocol gets one consistent
+  color across both the table (a small swatch next to its name) and its Gantt
+  row (`colorFor`, cycling the existing `C` palette — no new colors
+  introduced), so the two views read as describing the same thing at a
+  glance. This tab doesn't reuse `LabMap.jsx` — the deliverable here is
+  explicitly a start-time table, not a floor-plan route, so there's nothing
+  spatial for a map to add over the timeline it already renders.
 - `Controls.jsx`: shared widgets, some carried over from the original sim UI,
   some pulled out of the tab components as duplication showed up between them —
   `NumField` (protocol count / min-max steps / seed inputs across the generator
@@ -669,15 +758,18 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
 ## Working in this codebase
 
 - `labTable.js`, `data.js` (the routing model), `stepType.js`, `protocolGen.js`,
-  `protocolImport.js`, and `labOptimizer.js` are the places with actual logic; all
-  have an `npm test` suite — run it after changing any of them. UI changes should
-  also be verified with `npm run dev` (paste a table, confirm the map renders,
-  generate protocols, confirm consecutive steps land on different benches, the
-  highlighted path never cuts through a bench, and the walking-technician dot's
-  Play/Pause buttons animate/freeze it correctly on both the Protocol Generator and
-  Protocol Visualizer tabs; on the Lab Optimizer tab, confirm the "optimized" map's
-  relabeled benches and (when it recommends one) relocated trio box actually match
-  `moves`/`anchorChanged`).
+  `protocolImport.js`, `labOptimizer.js`, and `protocolScheduler.js` are the places
+  with actual logic; all have an `npm test` suite — run it after changing any of
+  them. UI changes should also be verified with `npm run dev` (paste a table, confirm
+  the map renders, generate protocols, confirm consecutive steps land on different
+  benches, the highlighted path never cuts through a bench, and the walking-technician
+  dot's Play/Pause buttons animate/freeze it correctly on both the Protocol Generator
+  and Protocol Visualizer tabs; on the Lab Optimizer tab, confirm the "optimized"
+  map's relabeled benches and (when it recommends one) relocated trio box actually
+  match `moves`/`anchorChanged`; on the Protocol Scheduler tab, confirm that pasting
+  two protocols with a shared, time-overlapping piece of equipment delays the
+  lower-priority one exactly until the higher-priority one frees it, and that the
+  Gantt timeline's blocks for that station never visually overlap).
 - Protocol generation is seeded (`mulberry32` in `src/rng.js`, user-controlled via
   the Protocol Generator's `seed` field) so the same table + settings + seed
   always produce the same output. The Lab Optimizer's search also runs on
@@ -695,9 +787,10 @@ shape-validating parse instead (see `LabOptimizerTab.jsx` below).
   rows/columns, storage aisles back in scope), a fixture's dimensions/position
   change, or a station's real-world name changes, it all lives in `data.js` —
   nothing else hardcodes bench/fixture positions or names. If the physical
-  reference measurements change, they're the `*_FT` constants at the top of
-  `data.js` — `routeDistanceFt`/`routeWaypoints` derive everything else from them, so
-  nothing else needs updating.
+  reference measurements change, they're the `*_FT` constants (plus
+  `WALK_FT_PER_SEC`, the Protocol Scheduler's walking-speed assumption) at the
+  top of `data.js` — `routeDistanceFt`/`routeWaypoints`/`walkMinutesForFt`
+  derive everything else from them, so nothing else needs updating.
 - The Read/Write keyword list in `stepType.js` is a heuristic, not a lookup table —
   if a new equipment name is consistently misclassified, add its keyword there rather
   than special-casing it in `protocolGen.js`.
